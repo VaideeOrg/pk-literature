@@ -37,15 +37,15 @@ describe("KalachuvaduAdapter", () => {
       const adapter = new KalachuvaduAdapter({
         baseUrl: BASE_URL,
         fetchImpl: fakeFetch({
-          [`${BASE_URL}/books?page=1`]: { body: fixture("listing-page-1.html") },
+          [`${BASE_URL}?page=1`]: { body: fixture("listing-page-1.html") },
         }),
       });
 
       const result = await adapter.discover(null);
 
       expect(result.refs).toEqual([
-        { sourceRef: "vishnupuram", sourceUrl: `${BASE_URL}/books/vishnupuram` },
-        { sourceRef: "kanyakumari", sourceUrl: `${BASE_URL}/books/kanyakumari` },
+        { sourceRef: "vishnupuram_1001", sourceUrl: `${BASE_URL}/catalogue/vishnupuram_1001/` },
+        { sourceRef: "kanyakumari_1002", sourceUrl: `${BASE_URL}/catalogue/kanyakumari_1002/` },
       ]);
       expect(result.nextPageCursor).toBe("2");
     });
@@ -54,14 +54,14 @@ describe("KalachuvaduAdapter", () => {
       const adapter = new KalachuvaduAdapter({
         baseUrl: BASE_URL,
         fetchImpl: fakeFetch({
-          [`${BASE_URL}/books?page=2`]: { body: fixture("listing-page-2.html") },
+          [`${BASE_URL}?page=2`]: { body: fixture("listing-page-2.html") },
         }),
       });
 
       const result = await adapter.discover("2");
 
       expect(result.refs).toEqual([
-        { sourceRef: "ezhaam-ulagam", sourceUrl: `${BASE_URL}/books/ezhaam-ulagam` },
+        { sourceRef: "ezhaam-ulagam_1003", sourceUrl: `${BASE_URL}/catalogue/ezhaam-ulagam_1003/` },
       ]);
       expect(result.nextPageCursor).toBeNull();
     });

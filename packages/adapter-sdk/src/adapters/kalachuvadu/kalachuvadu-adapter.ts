@@ -16,18 +16,26 @@ import type {
  * adapter (SPEC-04 §7): no public API, so this crawls listing + detail
  * pages and parses them with cheerio.
  *
- * NOT verified against the real Kalachuvadu website. `baseUrl` defaults
- * to a placeholder (`kalachuvadu.example`, matching this repo's
- * existing placeholder-domain convention — dev.pk-literature.example
- * etc.) and every CSS selector below (`.book-card`, `.book-title`, ...)
- * is illustrative, modeled on a typical bookstore catalog/detail page
- * layout, not scraped from the live site. Treat this as a structurally
- * complete, unit-tested example of how an HTML adapter fits the SDK
- * interface — before pointing it at the real site, a human needs to:
- * inspect the real markup, update the selectors and `baseUrl` (via
- * `PublisherRegistration.baseUrl`, SPEC-04 §8, not hardcoded here),
- * confirm robots.txt allows this (SPEC-04 §25), and re-run this
- * adapter's tests against real fixture HTML captured from the site.
+ * Listing URL scheme and discover()'s selectors are confirmed against
+ * real markup captured from the live site (a Django-oscar storefront).
+ * `baseUrl` defaults to a placeholder (`kalachuvadu.example`, matching
+ * this repo's existing placeholder-domain convention) for tests, but in
+ * every deployed environment it's the real
+ * `https://books.kalachuvadu.com/kcbooks/Allproducts` (SPEC-04 §8's
+ * `PublisherRegistration.baseUrl`, seeded in
+ * apps/api-catalog/migrations/20260101000009_seed_kalachuvadu_publisher.sql).
+ *
+ * fetchBook()/fetchInventory()/normalize() below still target the
+ * standalone book detail page (`/catalogue/<slug>_<id>/`), whose markup
+ * has NOT been captured yet — those selectors (`.book-detail`,
+ * `.book-title`, ...) remain illustrative placeholders. The real
+ * listing page embeds a "quickview" modal with similar-looking fields
+ * per book, but that's rendered inline on the listing page, not proof
+ * of the standalone detail page's structure — don't assume they match.
+ * Before this adapter can parse real book data end-to-end, a human
+ * needs to: fetch one real detail page, update these selectors, confirm
+ * robots.txt allows this (SPEC-04 §25), and re-run this adapter's tests
+ * against that real fixture HTML.
  */
 export interface KalachuvaduAdapterConfig {
   baseUrl?: string;
@@ -54,23 +62,38 @@ export class KalachuvaduAdapter implements PublisherAdapter {
 
   async discover(cursor: string | null): Promise<DiscoveryResult> {
     const page = cursor ? Number(cursor) : 1;
-    const listingUrl = `${this.baseUrl}/books?page=${page}`;
+    // Confirmed against the real site: the registered baseUrl
+    // (https://books.kalachuvadu.com/kcbooks/Allproducts) *is* the
+    // listing page — pagination is a query param on that same URL, not
+    // a "/books" sub-path (which 404s).
+    const listingUrl = `${this.baseUrl}?page=${page}`;
     const response = await this.fetchImpl(listingUrl);
     if (!response.ok) {
       throw new Error(`discover(): GET ${listingUrl} failed with ${response.status}`);
     }
     const $ = cheerio.load(await response.text());
 
-    const refs: DiscoveredBookRef[] = $(".book-card .book-link")
+    // Confirmed against real markup: each book card's own detail-page
+    // link is the direct-child <a class="first__img"> inside
+    // .product__thumb. The same "first__img" class also appears inside
+    // each card's quickview modal (.product-images .main-image a) —
+    // scoping to .product__thumb's direct child avoids double-counting
+    // those. hrefs are root-absolute (/catalogue/<slug>_<id>/), not
+    // relative to baseUrl's own path, so new URL(href, baseUrl) resolves
+    // them correctly without the WHATWG absolute-path pitfall (see
+    // apps/publisher-crawler's sigv4-http-staging-ingest-client.ts fix).
+    const refs: DiscoveredBookRef[] = $(".product__thumb > a.first__img[href]")
       .map((_, el): DiscoveredBookRef => {
         const href = $(el).attr("href") ?? "";
         const sourceUrl = new URL(href, this.baseUrl).toString();
-        const sourceRef = href.replace(/^\/?books\//, "").replace(/\/$/, "");
+        const sourceRef = href.replace(/^\/?catalogue\//, "").replace(/\/$/, "");
         return { sourceRef, sourceUrl };
       })
       .get();
 
-    const hasNextPage = $(".pagination-next").length > 0;
+    // Django-oscar's "pager" template: li.next only renders when
+    // there's a next page (absent on the last of the 135 pages).
+    const hasNextPage = $(".pager li.next a").length > 0;
     return { refs, nextPageCursor: hasNextPage ? String(page + 1) : null };
   }
 

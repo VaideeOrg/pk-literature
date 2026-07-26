@@ -75,10 +75,18 @@ resource "aws_apigatewayv2_domain_name" "this" {
 }
 
 resource "aws_apigatewayv2_api_mapping" "v1" {
-  api_id          = aws_apigatewayv2_api.this.id
-  domain_name     = aws_apigatewayv2_domain_name.this.id
-  stage           = aws_apigatewayv2_stage.v1.id
-  api_mapping_key = "v1"
+  api_id      = aws_apigatewayv2_api.this.id
+  domain_name = aws_apigatewayv2_domain_name.this.id
+  stage       = aws_apigatewayv2_stage.v1.id
+  # No api_mapping_key (maps at the domain root): every route_key below
+  # already has a literal "/v1/..." prefix baked in, mirroring each
+  # NestJS app's own setGlobalPrefix("v1") — a "v1" mapping key here
+  # strips that same segment from the incoming path *before* route
+  # matching, so callers would need "/v1/v1/..." to reach anything.
+  # Confirmed against the real deployed stack: with the mapping key
+  # set, every request to the documented single-"/v1" invoke_url below
+  # 404'd with API Gateway's own bare {"message":"Not Found"} — proof
+  # the request never reached any Lambda integration at all.
 }
 
 resource "aws_route53_record" "api" {

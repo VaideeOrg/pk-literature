@@ -91,9 +91,9 @@ variable "directus_image_tag" {
 }
 
 variable "medusa_image_tag" {
-  description = "Tag built into pk-literature/medusa by .github/workflows/build-medusa-image.yml — matches the @medusajs/* version pinned in apps/medusa/package.json."
+  description = "Tag built into pk-literature/medusa by .github/workflows/build-medusa-image.yml. Historically matched the @medusajs/* version pinned in apps/medusa/package.json, but ECR tags are IMMUTABLE (terraform/bootstrap/ecr.tf) and this image also bakes in our own apps/medusa source (medusa-config.ts, src/subscribers, Dockerfile) — a fix to our own code (e.g. medusa-config.ts TLS driver options) needs a new tag to actually roll out even when the upstream Medusa version has not changed, or build-medusa-image.yml just silently skips the push (tag already exists) and the old image keeps running. The -1 suffix marks our own build revision 1 of Medusa 2.17.2."
   type        = string
-  default     = "2.17.2"
+  default     = "2.17.2-1"
 }
 
 variable "coming_soon_mode" {

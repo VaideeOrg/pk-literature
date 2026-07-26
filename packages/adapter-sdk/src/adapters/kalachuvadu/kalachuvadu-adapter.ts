@@ -16,38 +16,33 @@ import type {
  * adapter (SPEC-04 §7): no public API, so this crawls listing + detail
  * pages and parses them with cheerio.
  *
- * Listing URL scheme and discover()'s selectors are confirmed against
- * real markup captured from the live site (a Django-oscar storefront).
- * `baseUrl` defaults to a placeholder (`kalachuvadu.example`, matching
- * this repo's existing placeholder-domain convention) for tests, but in
- * every deployed environment it's the real
+ * Listing URL scheme, discover()'s selectors, and (as of this revision)
+ * fetchInventory()/normalize()'s detail-page selectors are all confirmed
+ * against real markup captured from the live site (a Django-oscar
+ * storefront). `baseUrl` defaults to a placeholder (`kalachuvadu.example`,
+ * matching this repo's existing placeholder-domain convention) for tests,
+ * but in every deployed environment it's the real
  * `https://books.kalachuvadu.com/kcbooks/Allproducts` (SPEC-04 §8's
  * `PublisherRegistration.baseUrl`, seeded in
  * apps/api-catalog/migrations/20260101000009_seed_kalachuvadu_publisher.sql).
  *
- * fetchBook()/fetchInventory()/normalize() below still target the
- * standalone book detail page (`/catalogue/<slug>_<id>/`), whose markup
- * has NOT been captured yet — those selectors (`.book-detail`,
- * `.book-title`, ...) remain illustrative placeholders. The real
- * listing page embeds a "quickview" modal with similar-looking fields
- * per book, but that's rendered inline on the listing page, not proof
- * of the standalone detail page's structure — don't assume they match.
- * Before this adapter can parse real book data end-to-end, a human
- * needs to: fetch one real detail page, update these selectors, confirm
- * robots.txt allows this (SPEC-04 §25), and re-run this adapter's tests
- * against that real fixture HTML.
+ * Fields with no discoverable equivalent anywhere on the real detail page
+ * are set to fixed defaults rather than scraped: `language` is always
+ * `"ta"` (the whole storefront is Tamil-only; no per-book language field
+ * exists), `currency` is `"INR"` whenever a price was found (the page
+ * only ever shows a ₹ symbol, no `data-currency`-style attribute),
+ * `subtitle`/`publicationDate`/`editionLabel` are always `null` (no
+ * matching field found on the captured page at all).
+ *
+ * `fetchInventory()`'s in-stock/out-of-stock signal is a heuristic
+ * (presence of a buy-now/add-to-cart form) rather than a confirmed one —
+ * only an in-stock detail page has been captured so far; an out-of-stock
+ * sample would confirm or replace this.
  */
 export interface KalachuvaduAdapterConfig {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
 }
-
-// Publisher pages describe language by name, not ISO code — SPEC-01
-// only ever deals in these two, so a short map beats a dependency.
-const LANGUAGE_NAME_TO_CODE: Record<string, string> = {
-  tamil: "ta",
-  english: "en",
-};
 
 export class KalachuvaduAdapter implements PublisherAdapter {
   readonly publisherCode = "kalachuvadu";
@@ -115,22 +110,23 @@ export class KalachuvaduAdapter implements PublisherAdapter {
 
   async fetchInventory(ref: DiscoveredBookRef): Promise<RawInventory> {
     // Kalachuvadu has no separate inventory endpoint — the detail page
-    // itself carries current stock/price, same as a fresh fetchBook().
+    // itself carries current price, same as a fresh fetchBook(). There is
+    // no numeric stock count anywhere on the page — only a real
+    // buy-now/add-to-cart form (present on the one in-stock detail page
+    // captured so far) vs. its absence, used here as the availability
+    // signal until an actual out-of-stock page is captured to confirm it.
     const raw = await this.fetchBook(ref);
     const $ = cheerio.load(raw.raw as string);
 
-    const stockText = $(".book-stock").first().text().trim();
-    const stock = stockText ? Number.parseInt(stockText, 10) : null;
-    const priceText = $(".book-price").first().text().trim();
-    const price = priceText ? Number.parseFloat(priceText) : null;
-    const currency = $(".book-price").first().attr("data-currency") ?? null;
+    const price = parsePrice($);
+    const inStock = $('form[action^="/kcbooks/buy-now/"], form[action^="/basket/add/"]').length > 0;
 
     return {
       sourceRef: ref.sourceRef,
-      stock: Number.isNaN(stock) ? null : stock,
-      price: price !== null && Number.isNaN(price) ? null : price,
-      currency,
-      availability: stock !== null && stock > 0 ? "in_stock" : "out_of_stock",
+      stock: null,
+      price,
+      currency: price !== null ? "INR" : null,
+      availability: inStock ? "in_stock" : "out_of_stock",
     };
   }
 
@@ -156,55 +152,127 @@ export class KalachuvaduAdapter implements PublisherAdapter {
 
   normalize(raw: RawBook): CanonicalBook {
     const $ = cheerio.load(raw.raw as string);
-    const root = $(".book-detail");
 
-    const isbnText = root.find(".book-isbn").first().text().trim();
-    const isbnMatch = isbnText.match(/(\d{13})/);
+    const title = $(".product__info__main h1").first().text().trim() || null;
 
-    const authorText = root.find(".book-author").first().text().trim();
+    // Author lives inside a `.posted_in` span in `.product_meta`, as link
+    // text — but the same markup repeats that span structure for the
+    // book's category ("வகைமைகள்:"), so selection has to key off which
+    // <strong> label precedes it, not just take the first `.posted_in`
+    // match.
+    const authorSpan = findPostedInByLabel($, "நூலாசிரியர்");
     // Extraction only — this is the raw author string as it appears on
     // the page (native script or already-romanized, whichever the
-    // publisher uses), split on common multi-author separators.
-    // Transliteration to the canonical romanized form and alias storage
-    // (SPEC-04 §14's "ஜெயமோகன்" -> "Jeyamohan" example,
-    // catalog.author_aliases) is a duplicate-detection/editorial
-    // concern that needs the database and a real transliteration
-    // engine — out of scope for a reference HTML adapter, and
-    // authoritatively handled server-side (apps/api-publisher-import),
-    // not here.
-    const authorNames = authorText
-      .split(/[,;&]| and /i)
-      .map((name) => name.trim())
+    // publisher uses). Transliteration to the canonical romanized form
+    // and alias storage (SPEC-04 §14's "ஜெயமோகன்" -> "Jeyamohan" example,
+    // catalog.author_aliases) is a duplicate-detection/editorial concern
+    // that needs the database and a real transliteration engine — out of
+    // scope for a reference HTML adapter, and authoritatively handled
+    // server-side (apps/api-publisher-import), not here.
+    const authorNames = authorSpan
+      .find("a")
+      .map((_, a) => $(a).text().trim())
+      .get()
       .filter((name) => name.length > 0);
 
-    const languageText = root.find(".book-language").first().text().trim().toLowerCase();
-    const priceText = root.find(".book-price").first().text().trim();
-    const price = priceText ? Number.parseFloat(priceText) : null;
-    const pageCountText = root.find(".book-pages").first().text().trim();
-    const pageCount = pageCountText ? Number.parseInt(pageCountText, 10) : null;
-    const coverSrc = root.find(".book-cover").first().attr("src");
+    const categorySpan = findPostedInByLabel($, "வகைமைகள்");
+    const category = categorySpan.find("a").first().text().trim() || null;
+
+    const price = parsePrice($);
+
+    // Full description lives in the "About" tab (#nav-about), as one or
+    // more <p> paragraphs — the truncated `.show-hide-text` blurb
+    // elsewhere on the page is a "more" widget over the same text, not a
+    // separate/shorter field worth preferring.
+    const descriptionParagraphs = $("#nav-about .description__attribute p")
+      .map((_, p) => $(p).text().trim())
+      .get()
+      .filter((text) => text.length > 0);
+    const description =
+      descriptionParagraphs.length > 0
+        ? descriptionParagraphs.join("\n\n")
+        : $(".product__overview .show-hide-text").first().text().trim() || null;
+
+    // No dedicated cover-image element — the real page renders it inside
+    // a Fotorama.js gallery widget.
+    const coverSrc = $(".wn__fotorama__wrapper .fotorama img").first().attr("src");
+
+    // ISBN and page count aren't dedicated elements either — they're
+    // plain label-prefixed text lines in the "Detail" tab (#nav-details),
+    // e.g. "ISBN  :  9789355234339" / "PAGES :  0", so they need text
+    // parsing rather than a selector+attr read.
+    let isbn13: string | null = null;
+    let pageCount: number | null = null;
+    $("#nav-details .description__attribute p").each((_, p) => {
+      const text = $(p).text().trim();
+      const isbnMatch = text.match(/ISBN\s*:?\s*(\d{13})/i);
+      if (isbnMatch) {
+        isbn13 = isbnMatch[1]!;
+      }
+      const pagesMatch = text.match(/PAGES\s*:?\s*(\d+)/i);
+      // The site uses "0" as its "not tracked" convention for this field
+      // (seen on a real book), not a genuine zero-page book — and
+      // CanonicalBookSchema requires pageCount to be positive anyway, so
+      // 0 maps to null rather than being passed through.
+      if (pagesMatch && Number.parseInt(pagesMatch[1]!, 10) > 0) {
+        pageCount = Number.parseInt(pagesMatch[1]!, 10);
+      }
+    });
 
     return {
       sourceRef: raw.sourceRef,
-      isbn13: isbnMatch ? isbnMatch[1]! : null,
-      title: root.find(".book-title").first().text().trim() || null,
-      subtitle: root.find(".book-subtitle").first().text().trim() || null,
+      isbn13,
+      title,
+      // No discoverable subtitle field on the real detail page — the
+      // parenthesized suffix sometimes seen in the title (e.g.
+      // "(இ-புத்தகம்)", "e-book") is a format label, not a subtitle.
+      subtitle: null,
       authorNames,
       publisherName: "Kalachuvadu",
-      description: root.find(".book-description").first().text().trim() || null,
-      language: LANGUAGE_NAME_TO_CODE[languageText] ?? null,
+      description,
+      // No per-book language field exists anywhere on the real detail
+      // page — the whole storefront is Tamil-only, so this is a fixed
+      // default rather than scraped.
+      language: "ta",
       coverSourceUrl: coverSrc ? new URL(coverSrc, raw.sourceUrl).toString() : null,
-      price: price !== null && !Number.isNaN(price) ? price : null,
-      currency: root.find(".book-price").first().attr("data-currency") ?? null,
+      price,
+      // No data-currency-style attribute on the real page, only a ₹
+      // symbol in the price text — fixed default whenever a price was
+      // actually found.
+      currency: price !== null ? "INR" : null,
       stock: null, // fetchInventory() owns stock, not normalize() — SPEC-02's separate inventory table mirrors this split
-      category: root.find(".book-category").first().text().trim() || null,
-      publicationDate: root.find(".book-publication-date").first().text().trim() || null,
-      editionLabel: root.find(".book-edition").first().text().trim() || null,
-      pageCount: pageCount !== null && !Number.isNaN(pageCount) ? pageCount : null,
+      category,
+      publicationDate: null, // no discoverable field on the real detail page
+      editionLabel: null, // no discoverable field on the real detail page
+      pageCount,
     };
   }
 
   validate(book: CanonicalBook): ValidationResult {
     return validateBookFields(book);
   }
+}
+
+// Same selector/markup used by both normalize() and fetchInventory() (each
+// loads its own $ from a fresh cheerio.load()), so shared as module-level
+// helpers rather than duplicated inline.
+
+function parsePrice($: cheerio.CheerioAPI): number | null {
+  const priceText = $(".price-box .price_color").first().text();
+  const numeric = priceText.replace(/[^\d.]/g, "");
+  if (!numeric) {
+    return null;
+  }
+  const price = Number.parseFloat(numeric);
+  return Number.isNaN(price) ? null : price;
+}
+
+// `.product_meta .posted_in` repeats (author, category, ...) — each one
+// is distinguished only by its own <strong> label text, not by a
+// dedicated class, so callers pass the label they're looking for (e.g.
+// "நூலாசிரியர்:" for author).
+function findPostedInByLabel($: cheerio.CheerioAPI, label: string) {
+  return $(".product_meta .posted_in")
+    .filter((_, el) => $(el).find("strong").first().text().trim().startsWith(label))
+    .first();
 }

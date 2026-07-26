@@ -8,6 +8,13 @@ export interface RunImportOptions {
   adapter: PublisherAdapter;
   client: StagingIngestClient;
   logger?: Pick<Console, "log" | "warn" | "error">;
+  // Caps how many books this run attempts, across all discover() pages —
+  // a testing aid for iterating on an adapter's discover()/normalize()
+  // fixes against a handful of real books instead of the whole ~1600-book
+  // catalogue (SPEC-04's real pipeline has no such limit). Undefined
+  // means no limit. A limited run never advances last_import_cursor
+  // (below) since it deliberately didn't reach the end of the catalogue.
+  maxBooks?: number;
 }
 
 export interface RunImportSummary {
@@ -36,22 +43,35 @@ export interface RunImportSummary {
 // rather than left implicit.
 export async function runImport(options: RunImportOptions): Promise<RunImportSummary> {
   const logger = options.logger ?? console;
-  const { publisherId, trigger, adapter, client } = options;
+  const { publisherId, trigger, adapter, client, maxBooks } = options;
 
   const { cursor } = await client.getCursor(publisherId);
   const { runId } = await client.startImportRun(publisherId, trigger);
-  logger.log(`Started import run ${runId} for publisher ${publisherId} (trigger=${trigger}, cursor=${cursor})`);
+  logger.log(
+    `Started import run ${runId} for publisher ${publisherId} (trigger=${trigger}, cursor=${cursor}` +
+      (maxBooks !== undefined ? `, maxBooks=${maxBooks}` : "") +
+      `)`,
+  );
 
   let booksProcessed = 0;
   let booksFailed = 0;
+  let attempted = 0;
   let pageCursor = cursor;
   let sawAnyFailure = false;
+  let limitReached = false;
 
   try {
-    do {
+    pages: do {
       const discovery = await withRetry(() => adapter.discover(pageCursor));
 
       for (const ref of discovery.refs) {
+        if (maxBooks !== undefined && attempted >= maxBooks) {
+          limitReached = true;
+          logger.log(`Reached maxBooks=${maxBooks} — stopping this run early (not a failure).`);
+          break pages;
+        }
+        attempted++;
+
         try {
           const raw = await withRetry(() => adapter.fetchBook(ref));
           const book = adapter.normalize(raw);
@@ -103,8 +123,10 @@ export async function runImport(options: RunImportOptions): Promise<RunImportSum
   const status = sawAnyFailure && booksProcessed > 0 ? "partially_failed" : sawAnyFailure ? "failed" : "completed";
   // ADR-009: only advance the watermark on a run that reached the end
   // successfully — see the module-level caveat above about what this
-  // cursor value currently means for the reference adapter.
-  const nextCursor = status !== "failed" ? new Date().toISOString() : null;
+  // cursor value currently means for the reference adapter. A run cut
+  // short by maxBooks never reached the end of the catalogue, so it
+  // doesn't advance the cursor either, regardless of status.
+  const nextCursor = status !== "failed" && !limitReached ? new Date().toISOString() : null;
   await client.completeImportRun(runId, status, nextCursor, null);
 
   return { runId, status, booksProcessed, booksFailed };

@@ -47,6 +47,10 @@ on:
           - manual
           - retry
         default: manual
+      max_books:
+        description: "Cap on books processed this run, across all discover() pages (0 = no limit). Testing aid for iterating on an adapter's discover()/normalize() fixes without crawling the whole catalogue; a limited run never advances last_import_cursor (run-import.ts)."
+        required: false
+        default: "0"
 
 permissions:
   id-token: write
@@ -87,4 +91,5 @@ jobs:
           STAGING_INGEST_BASE_URL: ${{ vars.STAGING_INGEST_BASE_URL_PROD }}
           AWS_REGION: ap-southeast-1
           IMPORT_TRIGGER: ${{ inputs.trigger }}
+          MAX_BOOKS: ${{ inputs.max_books }}
         run: pnpm start

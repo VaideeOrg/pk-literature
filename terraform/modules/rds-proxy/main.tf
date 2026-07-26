@@ -63,6 +63,18 @@ resource "aws_db_proxy" "this" {
   vpc_subnet_ids         = var.private_isolated_subnet_ids
   vpc_security_group_ids = [var.rds_proxy_sg_id]
   require_tls            = true
+  # End-to-end IAM auth (proxy connects to the backend Postgres instance
+  # via IAM too, not just client-to-proxy). Required for every role in
+  # iam_auth_secret_arns below: each of them is a real `rds_iam` grantee
+  # (apps/*/migrations/*_grant_rds_iam.sql), which makes Postgres's own
+  # pg_hba.conf accept IAM-token auth ONLY for them — a stored secret
+  # password (the "standard"/non-end-to-end IAM auth this module used
+  # before) can never authenticate the proxy's own backend connection
+  # for these roles, no matter what the secret's password value is.
+  # Confirmed by a real error from a live invocation: "Configure IAM
+  # authentication as the DefaultAuthScheme in your proxy and try
+  # again" — RDS Proxy's own guidance for exactly this mismatch.
+  default_auth_scheme = "IAM_AUTH"
 
   auth {
     auth_scheme = "SECRETS"

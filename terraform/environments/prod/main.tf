@@ -148,26 +148,21 @@ module "rds_proxy" {
   db_instance_id              = module.rds.db_instance_id
   rds_master_secret_arn       = module.secrets_manager.rds_master_secret_arn
   require_iam_auth            = true
-  # Directus/Medusa connect with their own stored password (Knex has no
-  # dynamic IAM token refresh) — without registering their secrets
-  # here, the proxy has no auth entry for directus_app/medusa_app at
-  # all and rejects them, confirmed by a real "IAM authentication
-  # failed" error surfacing this gap.
-  additional_auth_secret_arns = [
-    module.secrets_manager.directus_db_password_secret_arn,
-    module.secrets_manager.medusa_db_password_secret_arn,
-  ]
-  # Every Lambda service's own IAM-auth DB role needs a registered
-  # entry too (iam_auth = REQUIRED) — without one, the proxy has no way
-  # to recognize the role at all and rejects the connection with "This
-  # RDS proxy has no credentials for the role <role>", confirmed by a
-  # real error from publisher_import_writer's first live invocation.
-  iam_auth_secret_arns = values(module.secrets_manager.iam_auth_role_secret_arns)
-  # End-to-end IAM auth (default_auth_scheme = IAM_AUTH) needs the
-  # proxy's own execution role to have rds-db:connect for these same
-  # roles too, not just a registered secret — confirmed by a real
-  # "PAM authentication failed" error without this grant.
-  iam_auth_db_usernames = keys(module.secrets_manager.iam_auth_role_secret_arns)
+  # Directus/Medusa, and (after RDS Proxy IAM auth was tried and
+  # abandoned for them — see modules/rds-proxy's header comment) every
+  # Lambda service's own DB role, all connect with a stored password.
+  # Without registering a role's secret here, the proxy has no auth
+  # entry for it at all and rejects the connection outright — confirmed
+  # by real "IAM authentication failed"/"This RDS proxy has no
+  # credentials for the role <role>" errors surfacing this gap for
+  # Directus/Medusa and for these six roles respectively.
+  additional_auth_secret_arns = concat(
+    [
+      module.secrets_manager.directus_db_password_secret_arn,
+      module.secrets_manager.medusa_db_password_secret_arn,
+    ],
+    values(module.secrets_manager.iam_auth_role_secret_arns),
+  )
 }
 
 module "s3" {

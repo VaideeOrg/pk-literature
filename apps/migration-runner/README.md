@@ -45,6 +45,27 @@ build time and `src/index.ts` passes it as `ssl.ca` — verification
 stays on (`rejectUnauthorized: true`), it's just now checking against
 the right root.
 
+### Syncing stored-password DB role passwords
+
+After migrations, `src/sync-role-passwords.ts` runs `ALTER ROLE ...
+WITH PASSWORD` for every stored-password DB role — `directus_app`,
+`medusa_app`, and (since RDS Proxy IAM auth was tried and abandoned for
+them; see `terraform/modules/rds-proxy`'s header comment)
+`catalog_api_readonly`, `feed_api_rw`, `search_api_readonly`,
+`commerce_api_rw`, `identity_api_rw`, `publisher_import_writer` —
+keeping each one's real Postgres password in sync with its own
+Secrets Manager secret (`ROLE_PASSWORD_SECRET_ARNS`, a JSON-encoded
+`{ roleName: secretArn }` map). `CREATE ROLE ... WITH LOGIN` alone
+never sets a password; nothing did this before, for any of these
+roles — a real, pre-existing gap that only became visible once a role
+actually needed to authenticate this way for real (a live
+`publisher_import_writer` connection attempt through RDS Proxy failing
+with `PAM authentication failed` after two different RDS Proxy IAM
+auth approaches, both eventually abandoned). A checked-in SQL migration
+could never do this sync itself without leaking the password value
+into git, so it's this Lambda's own code, run with the master
+credential it already holds, not a `*.sql` file.
+
 ## Not a normal service
 
 - **No HTTP trigger, no API Gateway route.** `terraform/environments/<env>/migration-runner.tf`
@@ -91,12 +112,11 @@ not pinned to a checked-in copy).
 
 ## Known limitation
 
-This has been built and typechecks, and the packaging script has been
-run end-to-end locally to confirm the zip's layout (`dist/src/index.js`
-+ `migrations/<service>/*.sql` + `rds-ca-bundle.pem` at the zip root)
-is correct. It has now been invoked twice for real: the first attempt
-failed on the RDS Proxy issue described above, the second (after that
-fix) failed on the TLS/CA issue also described above. A third real
-invocation, after both fixes land, hasn't happened yet as of this
-writing. Same disclosed-limitation pattern as `apps/directus/README.md`'s
-and `apps/medusa/README.md`'s "Known issue" sections.
+Invoked for real multiple times against the live RDS instance —
+migrations for all five services apply cleanly, `catalog.publishers`
+seeding is confirmed, and the role-password sync step above has been
+exercised for the six formerly-IAM-auth roles. Not yet independently
+confirmed for `directus_app`/`medusa_app` specifically against a
+running Directus/Medusa task (both apps have their own disclosed,
+separate "not live-verified" limitations — see `apps/directus/README.md`
+and `apps/medusa/README.md`'s "Known issue" sections).

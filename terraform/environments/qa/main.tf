@@ -74,18 +74,14 @@ module "rds_proxy" {
   db_instance_id              = module.rds.db_instance_id
   rds_master_secret_arn       = module.secrets_manager.rds_master_secret_arn
   require_iam_auth            = true
-  # Every Lambda service's own IAM-auth DB role needs a registered
-  # entry too (iam_auth = REQUIRED) — without one, the proxy has no way
-  # to recognize the role at all and rejects the connection with "This
-  # RDS proxy has no credentials for the role <role>", confirmed by a
-  # real error from publisher_import_writer's first live invocation in
-  # prod.
-  iam_auth_secret_arns = values(module.secrets_manager.iam_auth_role_secret_arns)
-  # End-to-end IAM auth (default_auth_scheme = IAM_AUTH) needs the
-  # proxy's own execution role to have rds-db:connect for these same
-  # roles too, not just a registered secret — confirmed by a real
-  # "PAM authentication failed" error in prod without this grant.
-  iam_auth_db_usernames = keys(module.secrets_manager.iam_auth_role_secret_arns)
+  # Every Lambda service's own DB role connects with a stored password
+  # (RDS Proxy IAM auth was tried and abandoned for these — see
+  # modules/rds-proxy's header comment) — without registering a role's
+  # secret here, the proxy has no auth entry for it at all and rejects
+  # the connection with "This RDS proxy has no credentials for the role
+  # <role>", confirmed by a real error from publisher_import_writer's
+  # first live invocation in prod.
+  additional_auth_secret_arns = values(module.secrets_manager.iam_auth_role_secret_arns)
 }
 
 module "s3" {

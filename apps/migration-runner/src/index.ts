@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { Client } from "pg";
 import runner from "node-pg-migrate";
 import { resolveMasterCredential } from "./resolve-master-credential";
+import { syncRolePasswords } from "./sync-role-passwords";
 
 // RDS's own certificate (unlike RDS Proxy's, which chains to a
 // publicly-trusted root) is issued by Amazon's RDS-specific CA
@@ -41,6 +42,9 @@ interface RunnerResult {
   // just to find the id a workflow_dispatch input needs
   // (runbooks/deploy.md's publisher-import.yml step).
   publishers: PublisherRow[];
+  // Role names whose real Postgres password was synced from Secrets
+  // Manager this run — see sync-role-passwords.ts.
+  rolePasswordsSynced: string[];
 }
 
 // Order matters: api-catalog's migrations create the catalog/staging
@@ -108,10 +112,23 @@ export async function handler(event: MigrationRunnerEvent = {}): Promise<RunnerR
     }
   }
 
+  // Stored-password roles (directus_app/medusa_app, and — since RDS
+  // Proxy IAM auth was abandoned for them — catalog_api_readonly/
+  // feed_api_rw/search_api_readonly/commerce_api_rw/identity_api_rw/
+  // publisher_import_writer) need their real Postgres password kept in
+  // sync with Secrets Manager; nothing else does this, and a plain SQL
+  // migration never could without leaking the value into git. Only on
+  // "up" — a "down" migration run is reverting schema, not rotating
+  // credentials.
+  const rolePasswordsSynced = direction === "up" ? await syncRolePasswords(databaseUrl) : [];
+  if (rolePasswordsSynced.length > 0) {
+    console.log(`==> Synced passwords for: ${rolePasswordsSynced.join(", ")}`);
+  }
+
   const publishers = await fetchPublishers(databaseUrl);
   console.log(`==> catalog.publishers: ${JSON.stringify(publishers)}`);
 
-  return { services: results, publishers };
+  return { services: results, publishers, rolePasswordsSynced };
 }
 
 // Separate connection from runner()'s own (node-pg-migrate opens and

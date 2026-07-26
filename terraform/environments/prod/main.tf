@@ -75,11 +75,20 @@ module "vpc_endpoints" {
   # to pull their images / fetch registry auth. events: Directus's
   # eventbridge-put-event extension, Medusa's eventbridge-order-placed
   # subscriber, and api-identity/api-commerce/api-publisher-import's
-  # own eventbridge.service.ts all call PutEvents directly. logs is
-  # deliberately left out — nothing here calls the CloudWatch Logs API
-  # directly (Lambda's own log shipping doesn't route through the VPC
-  # ENI at all, so it doesn't need this endpoint).
-  interface_endpoints_to_create      = ["ecr.api", "ecr.dkr", "events"]
+  # own eventbridge.service.ts all call PutEvents directly. logs was
+  # previously left out on the theory that nothing here calls the
+  # CloudWatch Logs API directly — true for Lambda (its log shipping is
+  # handled by the Lambda service control plane, outside the function's
+  # own VPC networking) but wrong for Directus's Fargate task: the
+  # awslogs log driver runs inside the task's own network namespace and
+  # needs real connectivity to the Logs API to create/write its log
+  # stream. Confirmed by a real stopped task's stoppedReason:
+  # "ResourceInitializationError: failed to validate logger args: The
+  # task cannot find the Amazon CloudWatch log group... There is a
+  # connection issue between the task and Amazon CloudWatch" — with no
+  # NAT in private-isolated and no logs endpoint, there was truly no
+  # route there at all.
+  interface_endpoints_to_create      = ["ecr.api", "ecr.dkr", "events", "logs"]
   existing_interface_endpoint_sg_ids = var.existing_interface_endpoint_sg_ids
   # ecs_medusa_sg and lambda_egress_sg were both missing here originally
   # — Medusa's and api-commerce's tasks sit outside private-isolated

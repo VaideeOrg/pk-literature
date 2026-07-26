@@ -30,13 +30,28 @@
 
 locals {
   migration_runner_zip = "${path.module}/../../../apps/migration-runner/dist-lambda.zip"
+
+  # Every stored-password DB role's own secret ARN, keyed by role name
+  # — apps/migration-runner/src/sync-role-passwords.ts reads this map
+  # (as ROLE_PASSWORD_SECRET_ARNS, JSON-encoded) to keep each role's
+  # real Postgres password in sync with Secrets Manager after every
+  # migration run. directus_app/medusa_app's passwords were never
+  # actually synced anywhere before this either — a real, pre-existing
+  # gap only discovered while wiring the other six.
+  role_password_secret_arns = merge(
+    {
+      directus_app = module.secrets_manager.directus_db_password_secret_arn
+      medusa_app   = module.secrets_manager.medusa_db_password_secret_arn
+    },
+    module.secrets_manager.iam_auth_role_secret_arns,
+  )
 }
 
 data "aws_iam_policy_document" "migration_runner_secrets" {
   statement {
     effect    = "Allow"
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = [module.secrets_manager.rds_master_secret_arn]
+    resources = concat([module.secrets_manager.rds_master_secret_arn], values(local.role_password_secret_arns))
   }
 }
 
@@ -65,9 +80,10 @@ module "lambda_migration_runner" {
   environment_variables = {
     RDS_MASTER_SECRET_ARN = module.secrets_manager.rds_master_secret_arn
     # RDS's own endpoint, not RDS Proxy — see file header comment.
-    PGHOST     = module.rds.db_address
-    PGPORT     = tostring(module.rds.db_port)
-    PGDATABASE = "pk_literature"
+    PGHOST                    = module.rds.db_address
+    PGPORT                    = tostring(module.rds.db_port)
+    PGDATABASE                = "pk_literature"
+    ROLE_PASSWORD_SECRET_ARNS = jsonencode(local.role_password_secret_arns)
   }
 
   additional_policy_json   = data.aws_iam_policy_document.migration_runner_secrets.json

@@ -15,18 +15,31 @@
 # to RDS instead, bypassing the proxy entirely.
 #
 # var.additional_auth_secret_arns registers extra secrets with
-# iam_auth = DISABLED unconditionally — Directus/Medusa's own DB-role
-# passwords (directus_app/medusa_app), whose Postgres clients (Knex)
-# have no dynamic IAM token refresh support, so they connect with a
-# stored password instead (infrastructure/secrets.md's documented
-# exception). Without an entry here, the proxy has no way to validate
-# their password at all — confirmed by a real "IAM authentication
-# failed" error from a stored-password connection, which is what
-# uncovered that this was never wired up despite being the documented
-# intent everywhere else in this codebase.
-
-data "aws_region" "current" {}
-data "aws_caller_identity" "current" {}
+# iam_auth = DISABLED unconditionally — every service's own DB-role
+# password (directus_app/medusa_app, and — since RDS Proxy IAM auth was
+# tried and abandoned for these — also catalog_api_readonly/
+# feed_api_rw/search_api_readonly/commerce_api_rw/identity_api_rw/
+# publisher_import_writer). Without an entry here, the proxy has no way
+# to validate their password at all — confirmed by a real "IAM
+# authentication failed" error from a stored-password connection, which
+# is what uncovered that this was never wired up despite being the
+# documented intent everywhere else in this codebase.
+#
+# Standard RDS Proxy IAM auth (iam_auth = REQUIRED on a registered
+# secret) and end-to-end IAM auth (default_auth_scheme = IAM_AUTH,
+# requiring an AWS provider bump to ~> 6.15) were both tried against the
+# six Lambda services' own roles for real and abandoned: the former hit
+# "This RDS proxy has no credentials for the role <role>" until a
+# secret was registered, the latter hit "Configure IAM authentication
+# as the DefaultAuthScheme in your proxy", then "PAM authentication
+# failed" even after granting the proxy's own execution role
+# rds-db:connect, then "Connection terminated unexpectedly" with no
+# further AWS documentation found confirming a shared-proxy,
+# multiple-distinct-target-role topology like this one is actually
+# supported end-to-end yet. Reverted to a stored password for all six,
+# matching directus_app/medusa_app's already-working pattern —
+# apps/migration-runner's sync-role-passwords step keeps each one's
+# real Postgres password in sync with its own Secrets Manager secret.
 
 data "aws_iam_policy_document" "rds_proxy_assume_role" {
   statement {
@@ -49,7 +62,7 @@ data "aws_iam_policy_document" "rds_proxy_secrets" {
   statement {
     effect    = "Allow"
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = concat([var.rds_master_secret_arn], var.additional_auth_secret_arns, var.iam_auth_secret_arns)
+    resources = concat([var.rds_master_secret_arn], var.additional_auth_secret_arns)
   }
 }
 
@@ -59,37 +72,6 @@ resource "aws_iam_role_policy" "rds_proxy_secrets" {
   policy = data.aws_iam_policy_document.rds_proxy_secrets.json
 }
 
-# End-to-end IAM auth (default_auth_scheme = IAM_AUTH below) means the
-# proxy itself — not just the connecting client — presents IAM
-# credentials to the backend Postgres instance for every role in
-# var.iam_auth_db_usernames. Without this grant on the proxy's own
-# execution role, that backend-side authentication attempt fails; a
-# real live invocation surfaced this as Postgres's own "PAM
-# authentication failed for user <role>" rather than a clearer IAM
-# error, since (per AWS's own guidance) the proxy's role needs
-# rds-db:connect in addition to the secretsmanager:GetSecretValue above
-# even when a role connects via IAM, not a stored password.
-data "aws_iam_policy_document" "rds_proxy_rds_connect" {
-  count = length(var.iam_auth_db_usernames) > 0 ? 1 : 0
-
-  statement {
-    effect  = "Allow"
-    actions = ["rds-db:connect"]
-    resources = [
-      for username in var.iam_auth_db_usernames :
-      "arn:aws:rds-db:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:dbuser:${element(split(":", aws_db_proxy.this.arn), 6)}/${username}"
-    ]
-  }
-}
-
-resource "aws_iam_role_policy" "rds_proxy_rds_connect" {
-  count = length(var.iam_auth_db_usernames) > 0 ? 1 : 0
-
-  name   = "rds-connect"
-  role   = aws_iam_role.rds_proxy.id
-  policy = data.aws_iam_policy_document.rds_proxy_rds_connect[0].json
-}
-
 resource "aws_db_proxy" "this" {
   name                   = "pk-literature-${var.environment}"
   engine_family          = "POSTGRESQL"
@@ -97,18 +79,6 @@ resource "aws_db_proxy" "this" {
   vpc_subnet_ids         = var.private_isolated_subnet_ids
   vpc_security_group_ids = [var.rds_proxy_sg_id]
   require_tls            = true
-  # End-to-end IAM auth (proxy connects to the backend Postgres instance
-  # via IAM too, not just client-to-proxy). Required for every role in
-  # iam_auth_secret_arns below: each of them is a real `rds_iam` grantee
-  # (apps/*/migrations/*_grant_rds_iam.sql), which makes Postgres's own
-  # pg_hba.conf accept IAM-token auth ONLY for them — a stored secret
-  # password (the "standard"/non-end-to-end IAM auth this module used
-  # before) can never authenticate the proxy's own backend connection
-  # for these roles, no matter what the secret's password value is.
-  # Confirmed by a real error from a live invocation: "Configure IAM
-  # authentication as the DefaultAuthScheme in your proxy and try
-  # again" — RDS Proxy's own guidance for exactly this mismatch.
-  default_auth_scheme = "IAM_AUTH"
 
   auth {
     auth_scheme = "SECRETS"
@@ -121,25 +91,6 @@ resource "aws_db_proxy" "this" {
     content {
       auth_scheme = "SECRETS"
       iam_auth    = "DISABLED"
-      secret_arn  = auth.value
-    }
-  }
-
-  # Each Lambda service's own IAM-auth DB role (catalog_api_readonly,
-  # publisher_import_writer, ...) needs its own registered entry here
-  # too, iam_auth = REQUIRED — RDS Proxy identifies which role a
-  # connection is for by matching against a registered secret's own
-  # username field, regardless of whether that role ultimately
-  # authenticates with the secret's password or an IAM token. Without
-  # one, the proxy rejects the connection with "This RDS proxy has no
-  # credentials for the role <role>" — confirmed by a real error from
-  # publisher_import_writer's first live invocation, before this
-  # existed for any of these roles.
-  dynamic "auth" {
-    for_each = var.iam_auth_secret_arns
-    content {
-      auth_scheme = "SECRETS"
-      iam_auth    = "REQUIRED"
       secret_arn  = auth.value
     }
   }

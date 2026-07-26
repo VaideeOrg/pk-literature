@@ -25,19 +25,7 @@ variable "require_iam_auth" {
 }
 
 variable "additional_auth_secret_arns" {
-  description = "Extra Secrets Manager secret ARNs (beyond the master credential) whose DB users connect with a stored password, unconditionally (iam_auth = DISABLED) — e.g. Directus/Medusa's own DB-role secrets, whose Postgres clients have no dynamic IAM token refresh support."
-  type        = list(string)
-  default     = []
-}
-
-variable "iam_auth_secret_arns" {
-  description = "Secrets Manager secret ARNs registering DB users that authenticate via IAM (iam_auth = REQUIRED), not a stored password — e.g. every Lambda service's own DB role (catalog_api_readonly, publisher_import_writer, ...). RDS Proxy matches incoming connections to one of these entries by the secret's own username field; without a registered entry here, it rejects the connection outright with \"This RDS proxy has no credentials for the role <role>\" even though the client never actually presents the secret's password — a real error from a live invocation that first surfaced this gap."
-  type        = list(string)
-  default     = []
-}
-
-variable "iam_auth_db_usernames" {
-  description = "Plain DB role names (not secret ARNs — e.g. \"publisher_import_writer\", matching iam_auth_secret_arns's roles) that the proxy itself needs rds-db:connect for, under end-to-end IAM auth (default_auth_scheme = IAM_AUTH on aws_db_proxy). End-to-end auth means the proxy — not just the client — presents IAM credentials to the backend Postgres instance for these roles; without this grant on the proxy's own execution role, that backend-side IAM auth fails as a Postgres \"PAM authentication failed\" error, confirmed by a real error from a live invocation after default_auth_scheme was first set to IAM_AUTH."
+  description = "Extra Secrets Manager secret ARNs (beyond the master credential) whose DB users connect with a stored password, unconditionally (iam_auth = DISABLED) — every service's own DB-role password (directus_app/medusa_app, and every Lambda service's own role — catalog_api_readonly, feed_api_rw, search_api_readonly, commerce_api_rw, identity_api_rw, publisher_import_writer — after RDS Proxy IAM auth was tried and abandoned for them)."
   type        = list(string)
   default     = []
 }

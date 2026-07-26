@@ -1,14 +1,43 @@
 <!doctype html>
 <html>
   <body>
-    <div class="book-list">
-      <div class="book-card">
-        <a class="book-link" href="/books/vishnupuram">Vishnupuram</a>
+    <!-- Trimmed from a real captured listing page (Django-oscar
+    storefront) — .product__thumb's direct-child a.first__img is the
+    book link; the identical "first__img" class also appears inside
+    each card's quickview modal, which discover()'s selector must not
+    also match. -->
+    <div class="product product__style--3">
+      <div class="product__thumb">
+        <a class="first__img" href="/catalogue/vishnupuram_1001/"><img src="/media/covers/vishnupuram.jpg" alt="Vishnupuram"></a>
       </div>
-      <div class="book-card">
-        <a class="book-link" href="/books/kanyakumari">Kanyakumari Oridam</a>
+      <div class="product__content content--center">
+        <h4><a href="/catalogue/vishnupuram_1001/" title="Vishnupuram">Vishnupuram</a></h4>
+      </div>
+      <div class="modal fade" id="1001">
+        <div class="modal-body">
+          <div class="modal-product">
+            <div class="product-images">
+              <div class="main-image images">
+                <a class="first__img" href="/catalogue/vishnupuram_1001/"><img src="/media/covers/vishnupuram-modal.jpg" alt="Vishnupuram"></a>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-    <a class="pagination-next" href="/books?page=2">Next</a>
+    <div class="product product__style--3">
+      <div class="product__thumb">
+        <a class="first__img" href="/catalogue/kanyakumari_1002/"><img src="/media/covers/kanyakumari.jpg" alt="Kanyakumari Oridam"></a>
+      </div>
+      <div class="product__content content--center">
+        <h4><a href="/catalogue/kanyakumari_1002/" title="Kanyakumari Oridam">Kanyakumari Oridam</a></h4>
+      </div>
+    </div>
+    <div class="container">
+      <ul class="pager">
+        <li class="current d-flex justify-content-center">Page 1 of 2</li>
+        <li class="next"><a href="?page=2"><strong>NEXT</strong></a></li>
+      </ul>
+    </div>
   </body>
 </html>

@@ -16,7 +16,8 @@ import type {
  * adapter (SPEC-04 §7): no public API, so this crawls listing + detail
  * pages and parses them with cheerio.
  *
- * Listing URL scheme confirmed against the real site (discover() below);
+ * Listing URL scheme and discover()'s selectors are confirmed against
+ * real markup captured from the live site (a Django-oscar storefront).
  * `baseUrl` defaults to a placeholder (`kalachuvadu.example`, matching
  * this repo's existing placeholder-domain convention) for tests, but in
  * every deployed environment it's the real
@@ -24,13 +25,17 @@ import type {
  * `PublisherRegistration.baseUrl`, seeded in
  * apps/api-catalog/migrations/20260101000009_seed_kalachuvadu_publisher.sql).
  *
- * The CSS selectors below (`.book-card`, `.book-title`, ...) remain
- * illustrative, modeled on a typical bookstore catalog/detail page
- * layout, NOT yet verified against the live site's actual markup —
- * before this adapter can successfully parse real book data, a human
- * needs to: inspect the real markup, update these selectors, confirm
+ * fetchBook()/fetchInventory()/normalize() below still target the
+ * standalone book detail page (`/catalogue/<slug>_<id>/`), whose markup
+ * has NOT been captured yet — those selectors (`.book-detail`,
+ * `.book-title`, ...) remain illustrative placeholders. The real
+ * listing page embeds a "quickview" modal with similar-looking fields
+ * per book, but that's rendered inline on the listing page, not proof
+ * of the standalone detail page's structure — don't assume they match.
+ * Before this adapter can parse real book data end-to-end, a human
+ * needs to: fetch one real detail page, update these selectors, confirm
  * robots.txt allows this (SPEC-04 §25), and re-run this adapter's tests
- * against real fixture HTML captured from the site.
+ * against that real fixture HTML.
  */
 export interface KalachuvaduAdapterConfig {
   baseUrl?: string;
@@ -68,16 +73,27 @@ export class KalachuvaduAdapter implements PublisherAdapter {
     }
     const $ = cheerio.load(await response.text());
 
-    const refs: DiscoveredBookRef[] = $(".book-card .book-link")
+    // Confirmed against real markup: each book card's own detail-page
+    // link is the direct-child <a class="first__img"> inside
+    // .product__thumb. The same "first__img" class also appears inside
+    // each card's quickview modal (.product-images .main-image a) —
+    // scoping to .product__thumb's direct child avoids double-counting
+    // those. hrefs are root-absolute (/catalogue/<slug>_<id>/), not
+    // relative to baseUrl's own path, so new URL(href, baseUrl) resolves
+    // them correctly without the WHATWG absolute-path pitfall (see
+    // apps/publisher-crawler's sigv4-http-staging-ingest-client.ts fix).
+    const refs: DiscoveredBookRef[] = $(".product__thumb > a.first__img[href]")
       .map((_, el): DiscoveredBookRef => {
         const href = $(el).attr("href") ?? "";
         const sourceUrl = new URL(href, this.baseUrl).toString();
-        const sourceRef = href.replace(/^\/?books\//, "").replace(/\/$/, "");
+        const sourceRef = href.replace(/^\/?catalogue\//, "").replace(/\/$/, "");
         return { sourceRef, sourceUrl };
       })
       .get();
 
-    const hasNextPage = $(".pagination-next").length > 0;
+    // Django-oscar's "pager" template: li.next only renders when
+    // there's a next page (absent on the last of the 135 pages).
+    const hasNextPage = $(".pager li.next a").length > 0;
     return { refs, nextPageCursor: hasNextPage ? String(page + 1) : null };
   }
 

@@ -35,3 +35,9 @@ variable "iam_auth_secret_arns" {
   type        = list(string)
   default     = []
 }
+
+variable "iam_auth_db_usernames" {
+  description = "Plain DB role names (not secret ARNs — e.g. \"publisher_import_writer\", matching iam_auth_secret_arns's roles) that the proxy itself needs rds-db:connect for, under end-to-end IAM auth (default_auth_scheme = IAM_AUTH on aws_db_proxy). End-to-end auth means the proxy — not just the client — presents IAM credentials to the backend Postgres instance for these roles; without this grant on the proxy's own execution role, that backend-side IAM auth fails as a Postgres \"PAM authentication failed\" error, confirmed by a real error from a live invocation after default_auth_scheme was first set to IAM_AUTH."
+  type        = list(string)
+  default     = []
+}

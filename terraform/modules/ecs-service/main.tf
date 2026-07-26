@@ -34,13 +34,30 @@ resource "aws_iam_role_policy_attachment" "execution_managed" {
 # Execution role also needs to read the Secrets Manager values injected
 # via `secrets` in the container definition — the managed policy above
 # only covers ECR/logs, not arbitrary secrets.
+#
+# A caller's `secrets` value may carry a `:jsonKey::` suffix (e.g.
+# directus.tf's `"${arn}:password::"`, extracting one field out of a
+# JSON-shaped secret) — but the actual secretsmanager:GetSecretValue
+# call ECS makes under the hood is always against the bare secret ARN,
+# confirmed by a real AccessDeniedException naming the bare ARN even
+# though the task definition's own valueFrom included the suffix. An
+# ARN has exactly 6 colons (7 fields: arn:partition:service:region:
+# account:resourcetype:resource-id); anything after that is the
+# optional suffix, stripped here so this policy's Resource list
+# actually matches what AWS evaluates against.
+locals {
+  execution_secret_arns = distinct([
+    for value in values(var.secrets) : join(":", slice(split(":", value), 0, 7))
+  ])
+}
+
 data "aws_iam_policy_document" "execution_secrets" {
   count = length(var.secrets) > 0 ? 1 : 0
 
   statement {
     effect    = "Allow"
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = values(var.secrets)
+    resources = local.execution_secret_arns
   }
 }
 

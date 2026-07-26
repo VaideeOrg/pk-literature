@@ -41,6 +41,31 @@ resource "aws_vpc_endpoint" "s3" {
   }
 }
 
+# create_endpoints = false reuses the account's existing S3 gateway
+# endpoint rather than the resource above — but nothing verified that
+# reused endpoint's RouteTableIds actually included
+# var.private_isolated_route_table_ids's specific table (it was created
+# for an earlier, unrelated project, against whatever route table THAT
+# project used). A real Directus ECS task confirmed the gap: its
+# CannotPullContainerError's `dial tcp <public-ip>:443: i/o timeout`
+# meant image-layer traffic to S3 wasn't being routed through the
+# gateway endpoint at all. This association resource only adds a
+# RouteTableIds entry to the existing endpoint — additive, doesn't
+# import or otherwise take over managing it.
+data "aws_vpc_endpoint" "s3" {
+  count = var.create_endpoints ? 0 : 1
+
+  vpc_id       = var.vpc_id
+  service_name = "com.amazonaws.${var.aws_region}.s3"
+}
+
+resource "aws_vpc_endpoint_route_table_association" "s3_reused" {
+  for_each = var.create_endpoints ? toset([]) : toset(var.private_isolated_route_table_ids)
+
+  vpc_endpoint_id = data.aws_vpc_endpoint.s3[0].id
+  route_table_id  = each.value
+}
+
 locals {
   interface_endpoint_services = [
     "secretsmanager",

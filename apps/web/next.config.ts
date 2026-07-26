@@ -1,4 +1,3 @@
-import path from "node:path";
 import type { NextConfig } from "next";
 
 // CDN_HOST matches terraform/modules/cloudfront's `cdn.${var.domain_name}`
@@ -19,24 +18,6 @@ const nextConfig: NextConfig = {
         hostname: cdnHost,
       },
     ],
-  },
-  webpack: (config) => {
-    // pnpm's virtual store keeps one hoisted "phantom" copy per bare
-    // package name at node_modules/.pnpm/node_modules, used as a
-    // resolution fallback by packages (like next itself) that don't
-    // declare react as a real dependency edge. This workspace has two
-    // React majors installed (apps/medusa needs 18.x, apps/web/
-    // packages/ui need 19.x) and that phantom slot can only hold one —
-    // apps/medusa's much larger dependency count wins it, so anything
-    // falling back to it pulls in a second, incompatible React
-    // instance and crashes with "createContext is not a function".
-    // Force both to resolve to this app's own local copy instead.
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      react: path.resolve(__dirname, "node_modules/react"),
-      "react-dom": path.resolve(__dirname, "node_modules/react-dom"),
-    };
-    return config;
   },
 };
 

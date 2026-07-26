@@ -61,34 +61,58 @@ server-side fetches actually receive them back; see
 ## A real pnpm/Next.js bug, not a style choice
 
 This workspace installs two React majors side by side — `apps/medusa`'s
-admin dashboard needs 18.x, this app and `packages/ui` need 19.x. Two
-distinct, confirmed-by-actually-building failures came out of that:
+admin dashboard needs 18.x, this app and `packages/ui` need 19.x. That
+produced one confirmed, still-relevant failure, plus a second one that
+looked related but wasn't.
 
-1. **Typecheck**: `next`'s own `.d.ts` files (e.g.
-   `next/dist/styled-jsx/types/css.d.ts`) resolve a bare `import ...
-   from "react"` via plain ancestor-directory module resolution
-   starting at *next's own* install location, not this app's. That walk
-   passes through pnpm's shared `node_modules/.pnpm/node_modules`
-   fallback slot before ever reaching `apps/web/node_modules` — and
-   that slot can only hold one version of `@types/react`, which
-   apps/medusa's much larger dependency count wins. The result was
-   next's own types pulling in `@types/react@18.x`'s global JSX
-   augmentation into this app's compilation alongside the real
-   `19.x` types, producing `TS2786`/`ReactPortal` errors on every
-   `forwardRef`-based `packages/ui` component. Fixed with an explicit
-   `paths` remap in `tsconfig.json` (`"react"`/`"react-dom"` →
-   this app's own `@types/react`/`@types/react-dom`), which applies
-   program-wide regardless of which file does the importing.
-2. **Runtime bundling**: the same phantom-slot ambiguity, but for the
-   actual `react`/`react-dom` JS packages, not just their types — Next's
-   build-time page-data collection crashed with `createContext is not a
-   function` for exactly the same reason. Fixed with a `webpack.resolve
-   .alias` in `next.config.ts` forcing both to this app's own
-   `node_modules` copy.
+**Typecheck**: `next`'s own `.d.ts` files (e.g.
+`next/dist/styled-jsx/types/css.d.ts`) resolve a bare `import ... from
+"react"` via plain ancestor-directory module resolution starting at
+*next's own* install location, not this app's. That walk passes
+through pnpm's shared `node_modules/.pnpm/node_modules` fallback slot
+before ever reaching `apps/web/node_modules` — and that slot can only
+hold one version of `@types/react`, which apps/medusa's much larger
+dependency count wins. The result was next's own types pulling in
+`@types/react@18.x`'s global JSX augmentation into this app's
+compilation alongside the real `19.x` types, producing
+`TS2786`/`ReactPortal` errors on every `forwardRef`-based `packages/ui`
+component. Fixed with an explicit `paths` remap in `tsconfig.json`
+(`"react"`/`"react-dom"` → this app's own `@types/react`/
+`@types/react-dom`), which applies program-wide regardless of which
+file does the importing.
 
-Neither of these is a workaround for a real product requirement; both
-are disclosed, root-caused fixes for a genuine consequence of two apps
-in one pnpm workspace needing different React majors.
+**What looked like the same bug at runtime, but wasn't**: both `next
+build`'s page-data collection for `/books/[id]` and the deployed
+Lambda's first real request crashed — `createContext is not a
+function` at build time, `Cannot read properties of null (reading
+'useOptimistic')` at runtime. A webpack `resolve.alias` forcing
+`react`/`react-dom` to this app's own `node_modules` copy was tried
+first, by analogy with the typecheck fix above, and made no measurable
+difference to either error under any variation (alias target format,
+`isServer` gating, disabling `resolve.symlinks`) — which in hindsight
+ruled out the phantom-slot theory for this case: `pnpm --filter web why
+react` showed exactly one `react` resolution (`19.0.0`) across this
+app's entire dependency graph the whole time.
+
+The real cause: `packages/ui/src/components/button.tsx` imports
+`@radix-ui/react-slot`'s `Slot`, which calls `React.createContext` at
+module scope — a Client-Component-only API — but the file had no
+`"use client"` directive. Without it, the App Router treats the module
+as part of the Server Component graph; page-data collection evaluates
+it under Next's restricted server React condition (no `createContext`
+there), and the deployed bundle ends up with a copy of the module
+disconnected from the dispatcher next-server actually drives at
+runtime (no `useOptimistic` there either). Adding `"use client"` to
+`button.tsx` fixed both failures with no webpack config needed at all
+— `next.config.ts` carries no React-related `webpack()` override.
+
+`packages/ui`'s `peerDependencies.react` is also now pinned to the
+exact `19.0.0` (not `^19.0.0`) apps/web installs, closing off a
+separate, real duplicate-instance possibility surfaced while debugging
+this (`@radix-ui/react-slot` resolving its own `react` peer to whatever
+`^19.0.0` meant at lockfile-generation time, independently of this
+app's pinned version) — confirmed harmless to the actual crash above,
+but worth keeping closed.
 
 ## Deploying
 

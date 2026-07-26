@@ -163,7 +163,7 @@ resource "aws_vpc_security_group_ingress_rule" "rds_from_migration_runner" {
   description                  = "Postgres from migration-runner Lambda, direct (not via RDS Proxy)"
 }
 
-# --- rds-proxy-sg: ingress 5432 from lambda-db-sg; egress 5432 to rds-sg ---
+# --- rds-proxy-sg: ingress 5432 from lambda-db-sg/ecs-directus-sg/ecs-medusa-sg; egress 5432 to rds-sg ---
 
 resource "aws_vpc_security_group_ingress_rule" "rds_proxy_from_lambda_db" {
   security_group_id            = aws_security_group.rds_proxy.id
@@ -171,7 +171,33 @@ resource "aws_vpc_security_group_ingress_rule" "rds_proxy_from_lambda_db" {
   from_port                    = 5432
   to_port                      = 5432
   ip_protocol                  = "tcp"
-  description                  = "Postgres from Lambda/ECS DB clients"
+  description                  = "Postgres from Lambda DB clients"
+}
+
+# Directus and Medusa each have their own dedicated security group
+# (ecs_directus/ecs_medusa below), not lambda_db — each one's own
+# *_to_rds_proxy egress rule only covers its half of the connection;
+# without a matching ingress rule here, RDS Proxy's security group
+# silently drops the inbound attempt (no RST), which is exactly what
+# produces Knex's "Timeout acquiring a connection" rather than a clean
+# connection-refused/auth error — a live Medusa ECS task crash-looping
+# on this exact symptom is what surfaced the gap.
+resource "aws_vpc_security_group_ingress_rule" "rds_proxy_from_ecs_directus" {
+  security_group_id            = aws_security_group.rds_proxy.id
+  referenced_security_group_id = aws_security_group.ecs_directus.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  description                  = "Postgres from Directus ECS task"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "rds_proxy_from_ecs_medusa" {
+  security_group_id            = aws_security_group.rds_proxy.id
+  referenced_security_group_id = aws_security_group.ecs_medusa.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  description                  = "Postgres from Medusa ECS task"
 }
 
 resource "aws_vpc_security_group_egress_rule" "rds_proxy_to_rds" {

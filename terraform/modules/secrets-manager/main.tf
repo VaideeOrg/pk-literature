@@ -29,6 +29,63 @@ resource "aws_secretsmanager_secret_version" "rds_master" {
 }
 
 # ---------------------------------------------------------------------
+# RDS Proxy requires a registered Secrets Manager secret for EVERY DB
+# username that connects through it — including ones that authenticate
+# via IAM, not a password (terraform/modules/rds-proxy's `auth` blocks
+# match incoming connections by the secret's own `username` field, then
+# iam_auth = REQUIRED on that entry means the password is never
+# actually checked). Without an entry, the proxy rejects the connection
+# with "This RDS proxy has no credentials for the role <role>" — a real
+# error from a live Lambda invocation (apps/api-publisher-import,
+# whose publisher_import_writer role had no secret registered at all).
+# One secret per IAM-auth DB role created across every migration
+# (catalog_api_readonly, feed_api_rw, search_api_readonly,
+# commerce_api_rw, identity_api_rw, publisher_import_writer) — the
+# password value itself is never read by anything (IAM tokens replace
+# it entirely), it exists only so the secret's username field lets RDS
+# Proxy recognize the role.
+# ---------------------------------------------------------------------
+
+locals {
+  iam_auth_db_roles = [
+    "catalog_api_readonly",
+    "feed_api_rw",
+    "search_api_readonly",
+    "commerce_api_rw",
+    "identity_api_rw",
+    "publisher_import_writer",
+  ]
+}
+
+resource "random_password" "iam_auth_role" {
+  for_each = toset(local.iam_auth_db_roles)
+
+  length  = 32
+  special = false # unused value — avoid shell/JSON-escaping surprises for no benefit
+}
+
+resource "aws_secretsmanager_secret" "iam_auth_role" {
+  for_each = toset(local.iam_auth_db_roles)
+
+  name        = "/pk-literature/${var.environment}/rds/iam-auth-roles/${each.value}"
+  description = "RDS Proxy auth-registration secret for the ${each.value} DB role — password is unused (this role connects via IAM auth only)"
+
+  tags = {
+    Environment = var.environment
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "iam_auth_role" {
+  for_each = toset(local.iam_auth_db_roles)
+
+  secret_id = aws_secretsmanager_secret.iam_auth_role[each.value].id
+  secret_string = jsonencode({
+    username = each.value
+    password = random_password.iam_auth_role[each.value].result
+  })
+}
+
+# ---------------------------------------------------------------------
 # Phase 2: Directus. Unlike every other service's DB credential, this
 # one is a genuinely stored password injected via ECS task-definition
 # secrets — Directus's Knex-based Postgres client has no dynamic IAM

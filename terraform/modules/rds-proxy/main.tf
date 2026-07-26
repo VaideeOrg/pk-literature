@@ -46,7 +46,7 @@ data "aws_iam_policy_document" "rds_proxy_secrets" {
   statement {
     effect    = "Allow"
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = concat([var.rds_master_secret_arn], var.additional_auth_secret_arns)
+    resources = concat([var.rds_master_secret_arn], var.additional_auth_secret_arns, var.iam_auth_secret_arns)
   }
 }
 
@@ -75,6 +75,25 @@ resource "aws_db_proxy" "this" {
     content {
       auth_scheme = "SECRETS"
       iam_auth    = "DISABLED"
+      secret_arn  = auth.value
+    }
+  }
+
+  # Each Lambda service's own IAM-auth DB role (catalog_api_readonly,
+  # publisher_import_writer, ...) needs its own registered entry here
+  # too, iam_auth = REQUIRED — RDS Proxy identifies which role a
+  # connection is for by matching against a registered secret's own
+  # username field, regardless of whether that role ultimately
+  # authenticates with the secret's password or an IAM token. Without
+  # one, the proxy rejects the connection with "This RDS proxy has no
+  # credentials for the role <role>" — confirmed by a real error from
+  # publisher_import_writer's first live invocation, before this
+  # existed for any of these roles.
+  dynamic "auth" {
+    for_each = var.iam_auth_secret_arns
+    content {
+      auth_scheme = "SECRETS"
+      iam_auth    = "REQUIRED"
       secret_arn  = auth.value
     }
   }

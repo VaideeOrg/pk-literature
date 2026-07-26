@@ -27,8 +27,20 @@ resource "aws_apigatewayv2_api" "this" {
 }
 
 resource "aws_apigatewayv2_stage" "v1" {
-  api_id      = aws_apigatewayv2_api.this.id
-  name        = "v1"
+  api_id = aws_apigatewayv2_api.this.id
+  # $default, not a named "v1" stage: for HTTP APIs, a custom domain
+  # mapped to any NAMED stage has that stage's name injected as an
+  # extra path segment in rawPath/requestContext.http.path — the
+  # payload actually delivered to the Lambda integration — even though
+  # route_key matching itself uses the clean, un-prefixed path. Every
+  # route_key here already has its own literal "/v1/..." (mirroring
+  # each NestJS app's setGlobalPrefix("v1")), so with the stage named
+  # "v1" a single-"/v1" client request matched routes correctly but
+  # arrived at the Lambda as "/v1/v1/...", which NestJS's own routing
+  # then 404'd on ("Cannot GET /v1/v1/publishers/.../cursor" — a real
+  # error from a live invocation). $default is the one stage name HTTP
+  # API never adds as a path segment, in any invocation scenario.
+  name        = "$default"
   auto_deploy = true
 
   default_route_settings {

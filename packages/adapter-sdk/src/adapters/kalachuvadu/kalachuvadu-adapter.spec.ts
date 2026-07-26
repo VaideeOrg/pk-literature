@@ -68,53 +68,58 @@ describe("KalachuvaduAdapter", () => {
   });
 
   describe("fetchBook + normalize", () => {
-    it("extracts a canonical book from a detail page", async () => {
-      const detailUrl = `${BASE_URL}/books/vishnupuram`;
+    it("extracts a canonical book from a real detail page", async () => {
+      const detailUrl = `${BASE_URL}/catalogue/gandhi1915thirumbivanthamynthan_2068/`;
       const adapter = new KalachuvaduAdapter({
         baseUrl: BASE_URL,
         fetchImpl: fakeFetch({
-          [detailUrl]: { body: fixture("book-detail-vishnupuram.html") },
+          [detailUrl]: { body: fixture("book-detail-gandhi1915.html") },
         }),
       });
 
-      const raw = await adapter.fetchBook({ sourceRef: "vishnupuram", sourceUrl: detailUrl });
+      const raw = await adapter.fetchBook({ sourceRef: "gandhi1915thirumbivanthamynthan_2068", sourceUrl: detailUrl });
       const book = adapter.normalize(raw);
 
       expect(book).toEqual({
-        sourceRef: "vishnupuram",
-        isbn13: "9781234567890",
-        title: "Vishnupuram",
-        subtitle: "Part One",
-        authorNames: ["Jeyamohan"],
+        sourceRef: "gandhi1915thirumbivanthamynthan_2068",
+        isbn13: "9789355234339",
+        title: "காந்தி 1915: திரும்பி வந்த மைந்தன் (இ-புத்தகம்)",
+        subtitle: null,
+        authorNames: ["என். சொக்கன்"],
         publisherName: "Kalachuvadu",
-        description: "A landmark work of Tamil literature.",
+        description:
+          "காந்தியின் 1915ஆம் ஆண்டு தென்னாப்பிரிக்காவிலிருந்து இந்தியா திரும்பிய பயணத்தை விவரிக்கும் நூல்.\n\nஇந்நூல் காந்தியின் வாழ்க்கையில் ஒரு முக்கியமான கட்டத்தை ஆவணப்படுத்துகிறது.",
         language: "ta",
-        coverSourceUrl: `${BASE_URL}/covers/vishnupuram.jpg`,
-        price: 450,
+        coverSourceUrl: `${BASE_URL}/media/cache/91/fb/91fbeb17515ff943f856ebf4f79598f2.jpg`,
+        price: 269.04,
         currency: "INR",
         stock: null,
-        category: "Novel",
-        publicationDate: "2020-01-01",
-        editionLabel: "2nd Edition",
-        pageCount: 620,
+        category: "இ-புத்தகங்கள்",
+        publicationDate: null,
+        editionLabel: null,
+        pageCount: null, // real page shows "PAGES: 0" — the site's "not tracked" convention, not a genuine zero-page book
       });
     });
 
     it("normalizes a multi-author byline into separate names", async () => {
-      const detailUrl = `${BASE_URL}/books/co-authored`;
+      const detailUrl = `${BASE_URL}/catalogue/co-authored_9999/`;
       const adapter = new KalachuvaduAdapter({
         baseUrl: BASE_URL,
         fetchImpl: fakeFetch({
           [detailUrl]: {
-            body: `<div class="book-detail">
-              <h1 class="book-title">Co-authored Book</h1>
-              <div class="book-author">Author One, Author Two and Author Three</div>
-            </div>`,
+            body: `<div class="product__info__main"><h1>Co-authored Book</h1></div>
+              <div class="product_meta">
+                <span class="posted_in"><strong>நூலாசிரியர்:</strong>
+                  <a href="/kcbooks/AuthorDetailView/a_1/">Author One</a>,
+                  <a href="/kcbooks/AuthorDetailView/a_2/">Author Two</a>,
+                  <a href="/kcbooks/AuthorDetailView/a_3/">Author Three</a>
+                </span>
+              </div>`,
           },
         }),
       });
 
-      const raw = await adapter.fetchBook({ sourceRef: "co-authored", sourceUrl: detailUrl });
+      const raw = await adapter.fetchBook({ sourceRef: "co-authored_9999", sourceUrl: detailUrl });
       const book = adapter.normalize(raw);
 
       expect(book.authorNames).toEqual(["Author One", "Author Two", "Author Three"]);
@@ -122,38 +127,64 @@ describe("KalachuvaduAdapter", () => {
   });
 
   describe("fetchInventory", () => {
-    it("derives availability from stock", async () => {
-      const detailUrl = `${BASE_URL}/books/vishnupuram`;
+    it("reports in_stock when a buy-now/add-to-cart form is present", async () => {
+      const detailUrl = `${BASE_URL}/catalogue/gandhi1915thirumbivanthamynthan_2068/`;
       const adapter = new KalachuvaduAdapter({
         baseUrl: BASE_URL,
         fetchImpl: fakeFetch({
-          [detailUrl]: { body: fixture("book-detail-vishnupuram.html") },
+          [detailUrl]: { body: fixture("book-detail-gandhi1915.html") },
         }),
       });
 
-      const inventory = await adapter.fetchInventory({ sourceRef: "vishnupuram", sourceUrl: detailUrl });
+      const inventory = await adapter.fetchInventory({
+        sourceRef: "gandhi1915thirumbivanthamynthan_2068",
+        sourceUrl: detailUrl,
+      });
 
       expect(inventory).toEqual({
-        sourceRef: "vishnupuram",
-        stock: 12,
-        price: 450,
+        sourceRef: "gandhi1915thirumbivanthamynthan_2068",
+        stock: null,
+        price: 269.04,
         currency: "INR",
         availability: "in_stock",
+      });
+    });
+
+    it("reports out_of_stock when no buy-now/add-to-cart form is present", async () => {
+      const detailUrl = `${BASE_URL}/catalogue/ezhaam-ulagam_1003/`;
+      const adapter = new KalachuvaduAdapter({
+        baseUrl: BASE_URL,
+        fetchImpl: fakeFetch({
+          [detailUrl]: { body: fixture("book-detail-out-of-stock.html") },
+        }),
+      });
+
+      const inventory = await adapter.fetchInventory({ sourceRef: "ezhaam-ulagam_1003", sourceUrl: detailUrl });
+
+      expect(inventory).toEqual({
+        sourceRef: "ezhaam-ulagam_1003",
+        stock: null,
+        price: 150,
+        currency: "INR",
+        availability: "out_of_stock",
       });
     });
   });
 
   describe("validate", () => {
     it("delegates to the shared field validator", async () => {
-      const detailUrl = `${BASE_URL}/books/vishnupuram`;
+      const detailUrl = `${BASE_URL}/catalogue/gandhi1915thirumbivanthamynthan_2068/`;
       const adapter = new KalachuvaduAdapter({
         baseUrl: BASE_URL,
         fetchImpl: fakeFetch({
-          [detailUrl]: { body: fixture("book-detail-vishnupuram.html") },
+          [detailUrl]: { body: fixture("book-detail-gandhi1915.html") },
         }),
       });
 
-      const raw = await adapter.fetchBook({ sourceRef: "vishnupuram", sourceUrl: detailUrl });
+      const raw = await adapter.fetchBook({
+        sourceRef: "gandhi1915thirumbivanthamynthan_2068",
+        sourceUrl: detailUrl,
+      });
       const book = adapter.normalize(raw);
       const result = adapter.validate(book);
 

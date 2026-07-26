@@ -173,4 +173,84 @@ describe("runImport", () => {
     expect(adapter.downloadCover).not.toHaveBeenCalled();
     expect(client.submitBook).toHaveBeenCalledWith("run-1", expect.anything(), null);
   });
+
+  describe("maxBooks", () => {
+    it("stops mid-page once the limit is reached", async () => {
+      const adapter = makeAdapter({
+        discover: jest.fn().mockResolvedValueOnce({
+          refs: [
+            { sourceRef: "book-1", sourceUrl: "https://x/1" },
+            { sourceRef: "book-2", sourceUrl: "https://x/2" },
+            { sourceRef: "book-3", sourceUrl: "https://x/3" },
+          ],
+          nextPageCursor: null,
+        }),
+      });
+      const client = makeClient();
+
+      const summary = await runImport({
+        publisherId: "pub-1",
+        trigger: "manual",
+        adapter,
+        client,
+        logger: silentLogger,
+        maxBooks: 2,
+      });
+
+      expect(summary.status).toBe("completed");
+      expect(summary.booksProcessed).toBe(2);
+      expect(client.submitBook).toHaveBeenCalledTimes(2);
+    });
+
+    it("stops across pages once the limit is reached, without fetching further pages", async () => {
+      const discover = jest
+        .fn()
+        .mockResolvedValueOnce({ refs: [{ sourceRef: "book-1", sourceUrl: "https://x/1" }], nextPageCursor: "2" })
+        .mockResolvedValueOnce({
+          refs: [
+            { sourceRef: "book-2", sourceUrl: "https://x/2" },
+            { sourceRef: "book-3", sourceUrl: "https://x/3" },
+          ],
+          nextPageCursor: "3",
+        });
+      const adapter = makeAdapter({ discover });
+      const client = makeClient();
+
+      const summary = await runImport({
+        publisherId: "pub-1",
+        trigger: "manual",
+        adapter,
+        client,
+        logger: silentLogger,
+        maxBooks: 2,
+      });
+
+      expect(summary.booksProcessed).toBe(2);
+      expect(discover).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not advance the cursor when the run was cut short by the limit", async () => {
+      const adapter = makeAdapter({
+        discover: jest.fn().mockResolvedValueOnce({
+          refs: [
+            { sourceRef: "book-1", sourceUrl: "https://x/1" },
+            { sourceRef: "book-2", sourceUrl: "https://x/2" },
+          ],
+          nextPageCursor: null,
+        }),
+      });
+      const client = makeClient();
+
+      await runImport({
+        publisherId: "pub-1",
+        trigger: "manual",
+        adapter,
+        client,
+        logger: silentLogger,
+        maxBooks: 1,
+      });
+
+      expect(client.completeImportRun).toHaveBeenCalledWith("run-1", "completed", null, null);
+    });
+  });
 });

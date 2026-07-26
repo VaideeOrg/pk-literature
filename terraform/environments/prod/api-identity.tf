@@ -9,19 +9,20 @@
 
 locals {
   api_identity_zip = "${path.module}/../../../apps/api-identity/dist-lambda.zip"
-  # infrastructure/iam.md: lambda-api-identity connects via RDS Proxy
-  # IAM auth as identity_api_rw (migration 20260501000002 —
-  # apps/api-identity/migrations).
+  # infrastructure/iam.md: lambda-api-identity connects via RDS Proxy as
+  # identity_api_rw (migration 20260501000002 —
+  # apps/api-identity/migrations). Originally RDS Proxy IAM auth;
+  # switched to a stored password (terraform/modules/rds-proxy's header
+  # comment) after both of RDS Proxy's IAM auth modes were tried
+  # against the real deployed stack and abandoned.
   api_identity_db_user = "identity_api_rw"
 }
 
 data "aws_iam_policy_document" "api_identity_task" {
   statement {
-    effect  = "Allow"
-    actions = ["rds-db:connect"]
-    resources = [
-      "arn:aws:rds-db:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:dbuser:${module.rds_proxy.iam_auth_resource_id}/${local.api_identity_db_user}",
-    ]
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [module.secrets_manager.iam_auth_role_secret_arns[local.api_identity_db_user]]
   }
 
   # POST /auth/register publishes UserRegistered
@@ -62,11 +63,11 @@ module "lambda_api_identity" {
   security_group_ids = [module.security_groups.lambda_db_sg_id]
 
   environment_variables = {
-    DB_AUTH_MODE = "iam"
-    PGHOST       = module.rds_proxy.proxy_endpoint
-    PGPORT       = "5432"
-    PGDATABASE   = "pk_literature"
-    PGUSER       = local.api_identity_db_user
+    PGHOST                 = module.rds_proxy.proxy_endpoint
+    PGPORT                 = "5432"
+    PGDATABASE             = "pk_literature"
+    PGUSER                 = local.api_identity_db_user
+    DB_PASSWORD_SECRET_ARN = module.secrets_manager.iam_auth_role_secret_arns[local.api_identity_db_user]
 
     EVENTBRIDGE_BUS_NAME = module.eventbridge.bus_name
 

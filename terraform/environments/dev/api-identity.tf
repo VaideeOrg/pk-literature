@@ -17,11 +17,9 @@ locals {
 
 data "aws_iam_policy_document" "api_identity_task" {
   statement {
-    effect  = "Allow"
-    actions = ["rds-db:connect"]
-    resources = [
-      "arn:aws:rds-db:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:dbuser:${module.rds_proxy.iam_auth_resource_id}/${local.api_identity_db_user}",
-    ]
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [module.secrets_manager.iam_auth_role_secret_arns[local.api_identity_db_user]]
   }
 
   # POST /auth/register publishes UserRegistered
@@ -62,12 +60,12 @@ module "lambda_api_identity" {
   security_group_ids = [module.security_groups.lambda_db_sg_id]
 
   environment_variables = {
-    DB_AUTH_MODE = "iam"
-    PGHOST       = module.rds_proxy.proxy_endpoint
-    PGPORT       = "5432"
-    PGDATABASE   = "pk_literature"
-    PGUSER       = local.api_identity_db_user
-    AWS_REGION   = data.aws_region.current.name
+    PGHOST                 = module.rds_proxy.proxy_endpoint
+    PGPORT                 = "5432"
+    PGDATABASE             = "pk_literature"
+    PGUSER                 = local.api_identity_db_user
+    DB_PASSWORD_SECRET_ARN = module.secrets_manager.iam_auth_role_secret_arns[local.api_identity_db_user]
+    AWS_REGION             = data.aws_region.current.name
 
     EVENTBRIDGE_BUS_NAME = module.eventbridge.bus_name
 

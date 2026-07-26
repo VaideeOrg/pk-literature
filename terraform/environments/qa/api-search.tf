@@ -17,11 +17,9 @@ locals {
 
 data "aws_iam_policy_document" "api_search_rds_connect" {
   statement {
-    effect  = "Allow"
-    actions = ["rds-db:connect"]
-    resources = [
-      "arn:aws:rds-db:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:dbuser:${module.rds_proxy.iam_auth_resource_id}/${local.api_search_db_user}",
-    ]
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [module.secrets_manager.iam_auth_role_secret_arns[local.api_search_db_user]]
   }
 }
 
@@ -48,13 +46,13 @@ module "lambda_api_search" {
   security_group_ids = [module.security_groups.lambda_db_sg_id]
 
   environment_variables = {
-    DB_AUTH_MODE = "iam"
-    PGHOST       = module.rds_proxy.proxy_endpoint
-    PGPORT       = "5432"
-    PGDATABASE   = "pk_literature"
-    PGUSER       = local.api_search_db_user
-    AWS_REGION   = data.aws_region.current.name
-    CDN_BASE_URL = "https://cdn.${var.domain_name}"
+    PGHOST                 = module.rds_proxy.proxy_endpoint
+    PGPORT                 = "5432"
+    PGDATABASE             = "pk_literature"
+    PGUSER                 = local.api_search_db_user
+    DB_PASSWORD_SECRET_ARN = module.secrets_manager.iam_auth_role_secret_arns[local.api_search_db_user]
+    AWS_REGION             = data.aws_region.current.name
+    CDN_BASE_URL           = "https://cdn.${var.domain_name}"
     # SPEC-08 §21 — personalization ranking boost, off by default,
     # same feature-flag convention as apps/api-feed.
     FEATURE_PERSONALIZED_RANKING = "false"

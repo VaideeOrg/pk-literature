@@ -14,6 +14,9 @@ importers:
 
   apps/api-catalog:
     dependencies:
+      '@aws-sdk/client-secrets-manager':
+        specifier: ^3.687.0
+        version: 3.1093.0
       '@aws-sdk/rds-signer':
         specifier: ^3.687.0
         version: 3.1092.0
@@ -190,6 +193,9 @@ importers:
 
   apps/api-feed:
     dependencies:
+      '@aws-sdk/client-secrets-manager':
+        specifier: ^3.687.0
+        version: 3.1093.0
       '@aws-sdk/rds-signer':
         specifier: ^3.687.0
         version: 3.1092.0
@@ -387,6 +393,9 @@ importers:
       '@aws-sdk/client-s3':
         specifier: ^3.687.0
         version: 3.1092.0
+      '@aws-sdk/client-secrets-manager':
+        specifier: ^3.687.0
+        version: 3.1093.0
       '@aws-sdk/rds-signer':
         specifier: ^3.687.0
         version: 3.1092.0
@@ -469,6 +478,9 @@ importers:
 
   apps/api-search:
     dependencies:
+      '@aws-sdk/client-secrets-manager':
+        specifier: ^3.687.0
+        version: 3.1093.0
       '@aws-sdk/rds-signer':
         specifier: ^3.687.0
         version: 3.1092.0

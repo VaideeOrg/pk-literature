@@ -2,6 +2,7 @@ import { Global, Module, type Provider } from "@nestjs/common";
 import { CamelCasePlugin, Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
 import { Signer } from "@aws-sdk/rds-signer";
+import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 import type { Database } from "./database.types";
 
 // Identical shape to apps/api-catalog/src/database/database.module.ts —
@@ -11,19 +12,36 @@ import type { Database } from "./database.types";
 // same convention already established for database.types.ts.
 export const KYSELY = Symbol("KYSELY");
 
+let cachedPassword: string | undefined;
+
 function resolvePassword(): string | (() => Promise<string>) {
-  if (process.env.DB_AUTH_MODE !== "iam") {
+  if (process.env.DB_AUTH_MODE === "iam") {
+    const signer = new Signer({
+      hostname: requireEnv("PGHOST"),
+      port: Number(process.env.PGPORT ?? 5432),
+      username: requireEnv("PGUSER"),
+      region: requireEnv("AWS_REGION"),
+    });
+
+    return () => signer.getAuthToken();
+  }
+
+  const secretArn = process.env.DB_PASSWORD_SECRET_ARN;
+  if (!secretArn) {
     return process.env.PGPASSWORD ?? "";
   }
 
-  const signer = new Signer({
-    hostname: requireEnv("PGHOST"),
-    port: Number(process.env.PGPORT ?? 5432),
-    username: requireEnv("PGUSER"),
-    region: requireEnv("AWS_REGION"),
-  });
-
-  return () => signer.getAuthToken();
+  return async () => {
+    if (cachedPassword === undefined) {
+      const client = new SecretsManagerClient({});
+      const result = await client.send(new GetSecretValueCommand({ SecretId: secretArn }));
+      if (!result.SecretString) {
+        throw new Error(`Secret ${secretArn} has no SecretString`);
+      }
+      cachedPassword = (JSON.parse(result.SecretString) as { password: string }).password;
+    }
+    return cachedPassword;
+  };
 }
 
 function requireEnv(name: string): string {

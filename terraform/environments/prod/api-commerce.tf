@@ -15,20 +15,21 @@
 
 locals {
   api_commerce_zip = "${path.module}/../../../apps/api-commerce/dist-lambda.zip"
-  # infrastructure/iam.md: lambda-api-commerce connects via RDS Proxy
-  # IAM auth as commerce_api_rw (migration 20260401000003 —
+  # infrastructure/iam.md: lambda-api-commerce connects via RDS Proxy as
+  # commerce_api_rw (migration 20260401000003 —
   # apps/api-commerce/migrations). Read/write on commerce, read-only on
-  # catalog (checkout's inventory validation).
+  # catalog (checkout's inventory validation). Originally RDS Proxy IAM
+  # auth; switched to a stored password (terraform/modules/rds-proxy's
+  # header comment) after both of RDS Proxy's IAM auth modes were tried
+  # against the real deployed stack and abandoned.
   api_commerce_db_user = "commerce_api_rw"
 }
 
 data "aws_iam_policy_document" "api_commerce_task" {
   statement {
-    effect  = "Allow"
-    actions = ["rds-db:connect"]
-    resources = [
-      "arn:aws:rds-db:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:dbuser:${module.rds_proxy.iam_auth_resource_id}/${local.api_commerce_db_user}",
-    ]
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [module.secrets_manager.iam_auth_role_secret_arns[local.api_commerce_db_user]]
   }
 
   statement {
@@ -72,12 +73,12 @@ module "lambda_api_commerce" {
   security_group_ids = [module.security_groups.lambda_egress_sg_id]
 
   environment_variables = {
-    DB_AUTH_MODE = "iam"
-    PGHOST       = module.rds_proxy.proxy_endpoint
-    PGPORT       = "5432"
-    PGDATABASE   = "pk_literature"
-    PGUSER       = local.api_commerce_db_user
-    CDN_BASE_URL = "https://cdn.${var.domain_name}"
+    PGHOST                 = module.rds_proxy.proxy_endpoint
+    PGPORT                 = "5432"
+    PGDATABASE             = "pk_literature"
+    PGUSER                 = local.api_commerce_db_user
+    DB_PASSWORD_SECRET_ARN = module.secrets_manager.iam_auth_role_secret_arns[local.api_commerce_db_user]
+    CDN_BASE_URL           = "https://cdn.${var.domain_name}"
 
     EVENTBRIDGE_BUS_NAME = module.eventbridge.bus_name
 
@@ -188,11 +189,9 @@ resource "aws_lambda_permission" "api_gateway_invoke_api_commerce" {
 
 data "aws_iam_policy_document" "api_commerce_user_registered_consumer_task" {
   statement {
-    effect  = "Allow"
-    actions = ["rds-db:connect"]
-    resources = [
-      "arn:aws:rds-db:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:dbuser:${module.rds_proxy.iam_auth_resource_id}/${local.api_commerce_db_user}",
-    ]
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [module.secrets_manager.iam_auth_role_secret_arns[local.api_commerce_db_user]]
   }
 }
 
@@ -213,11 +212,11 @@ module "lambda_api_commerce_user_registered_consumer" {
   security_group_ids = [module.security_groups.lambda_db_sg_id]
 
   environment_variables = {
-    DB_AUTH_MODE = "iam"
-    PGHOST       = module.rds_proxy.proxy_endpoint
-    PGPORT       = "5432"
-    PGDATABASE   = "pk_literature"
-    PGUSER       = local.api_commerce_db_user
+    PGHOST                 = module.rds_proxy.proxy_endpoint
+    PGPORT                 = "5432"
+    PGDATABASE             = "pk_literature"
+    PGUSER                 = local.api_commerce_db_user
+    DB_PASSWORD_SECRET_ARN = module.secrets_manager.iam_auth_role_secret_arns[local.api_commerce_db_user]
   }
 
   additional_policy_json   = data.aws_iam_policy_document.api_commerce_user_registered_consumer_task.json

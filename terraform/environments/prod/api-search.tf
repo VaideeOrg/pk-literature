@@ -7,21 +7,23 @@
 
 locals {
   api_search_zip = "${path.module}/../../../apps/api-search/dist-lambda.zip"
-  # infrastructure/iam.md: lambda-api-search connects via RDS Proxy IAM
-  # auth as search_api_readonly (migration 20260301000001 —
+  # infrastructure/iam.md: lambda-api-search connects via RDS Proxy as
+  # search_api_readonly (migration 20260301000001 —
   # apps/api-search/migrations). Read-only on both catalog and
   # discovery (SPEC-08 §21's personalization ranking signal reads
   # discovery.interest_events, the same table api-feed reads).
+  # Originally RDS Proxy IAM auth; switched to a stored password
+  # (terraform/modules/rds-proxy's header comment) after both of RDS
+  # Proxy's IAM auth modes were tried against the real deployed stack
+  # and abandoned.
   api_search_db_user = "search_api_readonly"
 }
 
 data "aws_iam_policy_document" "api_search_rds_connect" {
   statement {
-    effect  = "Allow"
-    actions = ["rds-db:connect"]
-    resources = [
-      "arn:aws:rds-db:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:dbuser:${module.rds_proxy.iam_auth_resource_id}/${local.api_search_db_user}",
-    ]
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [module.secrets_manager.iam_auth_role_secret_arns[local.api_search_db_user]]
   }
 }
 
@@ -48,12 +50,12 @@ module "lambda_api_search" {
   security_group_ids = [module.security_groups.lambda_db_sg_id]
 
   environment_variables = {
-    DB_AUTH_MODE = "iam"
-    PGHOST       = module.rds_proxy.proxy_endpoint
-    PGPORT       = "5432"
-    PGDATABASE   = "pk_literature"
-    PGUSER       = local.api_search_db_user
-    CDN_BASE_URL = "https://cdn.${var.domain_name}"
+    PGHOST                 = module.rds_proxy.proxy_endpoint
+    PGPORT                 = "5432"
+    PGDATABASE             = "pk_literature"
+    PGUSER                 = local.api_search_db_user
+    DB_PASSWORD_SECRET_ARN = module.secrets_manager.iam_auth_role_secret_arns[local.api_search_db_user]
+    CDN_BASE_URL           = "https://cdn.${var.domain_name}"
     # SPEC-08 §21 — personalization ranking boost, off by default,
     # same feature-flag convention as apps/api-feed.
     FEATURE_PERSONALIZED_RANKING = "false"

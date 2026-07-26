@@ -12,8 +12,15 @@ name: Build Medusa Image
 # GATED, MANUAL-TRIGGER ONLY, matching build-directus-image.yml's
 # philosophy: nothing pushes a new image on every merge. Run this
 # explicitly, then separately re-run terraform-apply.yml (bumping
-# medusa_image_tag if you're moving to a new @medusajs/* version) to
-# roll it out.
+# medusa_image_tag) to roll it out — and bump the tag for ANY change
+# that affects this image, not just a new @medusajs/* version: unlike
+# Directus (a thin layer on an official upstream image), this Dockerfile
+# compiles our own apps/medusa source (medusa-config.ts,
+# src/subscribers, ...) into the image. A real incident: medusa-config.ts's
+# TLS driver-options fix merged and terraform-applied, but nobody
+# rebuilt the image under a new tag, so ECS kept pulling the old,
+# pre-fix image and the exact same "requires TLS" error kept
+# recurring — the fix silently never shipped.
 #
 # ECR repo tags are IMMUTABLE (terraform/bootstrap/ecr.tf) — pushing a
 # tag that already exists fails loudly rather than silently
@@ -24,9 +31,9 @@ on:
   workflow_dispatch:
     inputs:
       medusa_image_tag:
-        description: "Tag to build and push (must match environments/*/variables.tf's medusa_image_tag to actually roll out) — defaults to the @medusajs/* version pinned in apps/medusa/package.json."
+        description: "Tag to build and push (must match environments/*/variables.tf's medusa_image_tag to actually roll out). ECR tags are IMMUTABLE — a code-only change (e.g. medusa-config.ts) still needs a new tag here, or this workflow silently skips the push (tag already exists) and the old image keeps running."
         required: true
-        default: "2.17.2"
+        default: "2.17.2-1"
 
 permissions:
   id-token: write

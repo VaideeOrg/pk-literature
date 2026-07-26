@@ -112,8 +112,22 @@ resource "aws_secretsmanager_secret" "directus_db" {
 }
 
 resource "aws_secretsmanager_secret_version" "directus_db" {
-  secret_id     = aws_secretsmanager_secret.directus_db.id
-  secret_string = random_password.directus_db.result
+  secret_id = aws_secretsmanager_secret.directus_db.id
+  # RDS Proxy's SECRETS auth scheme matches an incoming connection's
+  # requested DB username against the secret's own `username` field — a
+  # bare password string has no such field, so the proxy can never match
+  # this auth rule and falls through to the master's iam_auth=REQUIRED
+  # rule instead, rejecting the connection with "IAM authentication
+  # failed for the role directus_app" (a real error from Directus's own
+  # ECS logs, confirmed only after fixing the earlier TLS gap let the
+  # connection get this far). ECS's task-definition `secrets`
+  # (directus.tf) extracts just the `password` key via the `:password::`
+  # JSON-key suffix on its `valueFrom` ARN, so DB_PASSWORD still gets the
+  # bare value, not this whole JSON blob.
+  secret_string = jsonencode({
+    username = var.directus_db_username
+    password = random_password.directus_db.result
+  })
 }
 
 resource "random_password" "directus_key" {
@@ -280,8 +294,15 @@ resource "aws_secretsmanager_secret" "medusa_db" {
 }
 
 resource "aws_secretsmanager_secret_version" "medusa_db" {
-  secret_id     = aws_secretsmanager_secret.medusa_db.id
-  secret_string = random_password.medusa_db.result
+  secret_id = aws_secretsmanager_secret.medusa_db.id
+  # Same RDS Proxy SECRETS-auth-matching fix as directus_db above — see
+  # its comment. ECS's `secrets` (medusa.tf) extracts just `password` via
+  # a `:password::` valueFrom suffix, so PGPASSWORD still gets the bare
+  # value.
+  secret_string = jsonencode({
+    username = var.medusa_db_username
+    password = random_password.medusa_db.result
+  })
 }
 
 resource "random_password" "medusa_jwt_secret" {

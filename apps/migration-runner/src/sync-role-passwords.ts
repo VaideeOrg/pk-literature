@@ -19,11 +19,14 @@ import { Client } from "pg";
 // than as a checked-in SQL migration, since a migration file can never
 // contain the actual password value without leaking it into git.
 //
-// Secret value shapes differ by role: the six former-IAM-auth roles'
-// secrets are jsonencode({ username, password }) (matching
-// rds_master's own shape); directus_app/medusa_app's are a bare
-// password string (ECS task-definition `secrets` injects that value
-// directly into an env var, so it can't be JSON). Handle both.
+// Every role's secret is jsonencode({ username, password }) (matching
+// rds_master's own shape) — including directus_app/medusa_app, whose
+// secrets used to be a bare password string until RDS Proxy's SECRETS
+// auth turned out to need the `username` field to match an incoming
+// connection to the right auth rule (see secrets-manager module's
+// directus_db/medusa_db comments). The bare-string fallback below stays
+// only as a defensive read path, not because any current secret is
+// still shaped that way.
 function extractPassword(secretString: string): string {
   try {
     const parsed = JSON.parse(secretString) as { password?: string };

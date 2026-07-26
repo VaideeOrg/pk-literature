@@ -16,6 +16,7 @@
     "package:lambda": "bash scripts/package-lambda.sh"
   },
   "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.687.0",
     "@aws-sdk/rds-signer": "^3.687.0",
     "@codegenie/serverless-express": "^4.16.0",
     "@nestjs/common": "^10.4.6",

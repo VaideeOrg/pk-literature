@@ -16,18 +16,21 @@ import type {
  * adapter (SPEC-04 §7): no public API, so this crawls listing + detail
  * pages and parses them with cheerio.
  *
- * NOT verified against the real Kalachuvadu website. `baseUrl` defaults
- * to a placeholder (`kalachuvadu.example`, matching this repo's
- * existing placeholder-domain convention — dev.pk-literature.example
- * etc.) and every CSS selector below (`.book-card`, `.book-title`, ...)
- * is illustrative, modeled on a typical bookstore catalog/detail page
- * layout, not scraped from the live site. Treat this as a structurally
- * complete, unit-tested example of how an HTML adapter fits the SDK
- * interface — before pointing it at the real site, a human needs to:
- * inspect the real markup, update the selectors and `baseUrl` (via
- * `PublisherRegistration.baseUrl`, SPEC-04 §8, not hardcoded here),
- * confirm robots.txt allows this (SPEC-04 §25), and re-run this
- * adapter's tests against real fixture HTML captured from the site.
+ * Listing URL scheme confirmed against the real site (discover() below);
+ * `baseUrl` defaults to a placeholder (`kalachuvadu.example`, matching
+ * this repo's existing placeholder-domain convention) for tests, but in
+ * every deployed environment it's the real
+ * `https://books.kalachuvadu.com/kcbooks/Allproducts` (SPEC-04 §8's
+ * `PublisherRegistration.baseUrl`, seeded in
+ * apps/api-catalog/migrations/20260101000009_seed_kalachuvadu_publisher.sql).
+ *
+ * The CSS selectors below (`.book-card`, `.book-title`, ...) remain
+ * illustrative, modeled on a typical bookstore catalog/detail page
+ * layout, NOT yet verified against the live site's actual markup —
+ * before this adapter can successfully parse real book data, a human
+ * needs to: inspect the real markup, update these selectors, confirm
+ * robots.txt allows this (SPEC-04 §25), and re-run this adapter's tests
+ * against real fixture HTML captured from the site.
  */
 export interface KalachuvaduAdapterConfig {
   baseUrl?: string;
@@ -54,7 +57,11 @@ export class KalachuvaduAdapter implements PublisherAdapter {
 
   async discover(cursor: string | null): Promise<DiscoveryResult> {
     const page = cursor ? Number(cursor) : 1;
-    const listingUrl = `${this.baseUrl}/books?page=${page}`;
+    // Confirmed against the real site: the registered baseUrl
+    // (https://books.kalachuvadu.com/kcbooks/Allproducts) *is* the
+    // listing page — pagination is a query param on that same URL, not
+    // a "/books" sub-path (which 404s).
+    const listingUrl = `${this.baseUrl}?page=${page}`;
     const response = await this.fetchImpl(listingUrl);
     if (!response.ok) {
       throw new Error(`discover(): GET ${listingUrl} failed with ${response.status}`);

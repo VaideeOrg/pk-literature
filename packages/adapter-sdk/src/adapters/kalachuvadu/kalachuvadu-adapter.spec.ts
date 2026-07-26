@@ -37,7 +37,7 @@ describe("KalachuvaduAdapter", () => {
       const adapter = new KalachuvaduAdapter({
         baseUrl: BASE_URL,
         fetchImpl: fakeFetch({
-          [`${BASE_URL}/books?page=1`]: { body: fixture("listing-page-1.html") },
+          [`${BASE_URL}?page=1`]: { body: fixture("listing-page-1.html") },
         }),
       });
 
@@ -54,7 +54,7 @@ describe("KalachuvaduAdapter", () => {
       const adapter = new KalachuvaduAdapter({
         baseUrl: BASE_URL,
         fetchImpl: fakeFetch({
-          [`${BASE_URL}/books?page=2`]: { body: fixture("listing-page-2.html") },
+          [`${BASE_URL}?page=2`]: { body: fixture("listing-page-2.html") },
         }),
       });
 

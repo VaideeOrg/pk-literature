@@ -3,11 +3,18 @@
 # then layer its dist/ output onto the official image — Directus loads
 # extensions by directory convention (extensions/operations/<name>/dist).
 #
-# See ../README.md's "Known issue" — this image has not been
-# successfully bootstrapped end-to-end in this environment (Directus
-# 11.17.4 and 12.1.1 both crash on first boot, reproducing even against
-# an empty database). Pinned version below is what was tested, not a
-# version known to work.
+# See ../README.md's "Known issue" — Directus 11.17.4 crashed on first
+# boot against the real prod RDS Postgres (not just this repo's own
+# sandbox, where 11.17.4 and 12.1.1 both crashed identically) at its
+# own built-in `20251014A-add-project-owner` migration. 10.13.4 is an
+# older major version, from before that migration existed, being tried
+# as the next real candidate — genuinely untested for this bug (a prior
+# session's only attempt at it failed a local, unrelated npm install
+# step, never actually reaching a live boot). Known consequence: the
+# eventbridge-put-event extension below declares `host: "^11.0.0"`
+# (package.json), so Directus 10 will very likely refuse to load it —
+# the "Trigger catalog publish event" Flow operation (SPEC-03) would
+# need re-verifying once 10.13.4 actually boots.
 #
 # DIRECTUS_VERSION must be declared here, before the first FROM — an
 # ARG used in a FROM's image reference has to be declared before *any*
@@ -16,7 +23,7 @@
 # build --build-arg DIRECTUS_VERSION=...` silently resolving to an
 # empty base image name when this was declared between the two
 # stages instead).
-ARG DIRECTUS_VERSION=11.17.4
+ARG DIRECTUS_VERSION=10.13.4
 
 FROM node:20-bookworm-slim AS extension-build
 WORKDIR /build

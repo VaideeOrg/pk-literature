@@ -50,6 +50,7 @@ module "security_groups" {
   environment = "prod"
   vpc_id      = module.vpc.vpc_id
   vpc_cidr    = module.vpc.vpc_cidr
+  aws_region  = var.aws_region
 }
 
 module "vpc_endpoints" {

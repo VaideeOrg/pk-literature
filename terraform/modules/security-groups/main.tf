@@ -6,6 +6,21 @@
 # Chain: rds-sg <- rds-proxy-sg <- lambda-db-sg
 # (infrastructure/networking.md)
 
+# S3 Gateway endpoint traffic stays addressed to S3's own (AWS-owned,
+# public-looking) IP range — the route table's prefix-list route
+# redirects it in-flight, but there's no ENI, so a security group can't
+# match it against vpc_cidr the way it can for interface-endpoint
+# traffic. Every *_to_vpc_endpoints rule below is deliberately
+# vpc_cidr-scoped for the interface endpoints (secretsmanager/events/
+# logs/ecr.api/ecr.dkr) and needs this separate, prefix-list-scoped
+# rule alongside it for S3 specifically — confirmed missing via a real
+# Directus ECS task's CannotPullContainerError (a silent SG drop on the
+# S3 leg of an ECR image-layer pull produces exactly the raw
+# `dial tcp <ip>:443: i/o timeout` that surfaced this).
+data "aws_ec2_managed_prefix_list" "s3" {
+  name = "com.amazonaws.${var.aws_region}.s3"
+}
+
 resource "aws_security_group" "rds" {
   name_prefix = "pk-literature-${var.environment}-rds-"
   vpc_id      = var.vpc_id
@@ -179,6 +194,21 @@ resource "aws_vpc_security_group_egress_rule" "lambda_db_to_rds_proxy" {
   description                  = "Postgres to RDS Proxy"
 }
 
+resource "aws_vpc_security_group_egress_rule" "lambda_db_to_s3" {
+  security_group_id = aws_security_group.lambda_db.id
+  # See the module-level comment above data.aws_ec2_managed_prefix_list.s3
+  # — api-publisher-import's cover uploads (MEDIA_BUCKET_NAME) are the
+  # one thing in this SG's consumers that actually needs S3 today, but
+  # this SG is shared by every private-isolated-tier Lambda, so fixing
+  # it here rather than narrowly on api-publisher-import matches how
+  # the rest of this SG's rules are already structured.
+  prefix_list_id = data.aws_ec2_managed_prefix_list.s3.id
+  from_port      = 443
+  to_port        = 443
+  ip_protocol    = "tcp"
+  description    = "HTTPS to S3 gateway endpoint"
+}
+
 resource "aws_vpc_security_group_egress_rule" "lambda_db_to_vpc_endpoints" {
   security_group_id = aws_security_group.lambda_db.id
   # CIDR, not a security-group reference: modules/vpc-endpoints' interface
@@ -329,7 +359,16 @@ resource "aws_vpc_security_group_egress_rule" "ecs_directus_to_vpc_endpoints" {
   from_port   = 443
   to_port     = 443
   ip_protocol = "tcp"
-  description = "HTTPS to S3/Secrets Manager/EventBridge/ECR interface endpoints"
+  description = "HTTPS to Secrets Manager/EventBridge/ECR interface endpoints"
+}
+
+resource "aws_vpc_security_group_egress_rule" "ecs_directus_to_s3" {
+  security_group_id = aws_security_group.ecs_directus.id
+  prefix_list_id    = data.aws_ec2_managed_prefix_list.s3.id
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
+  description       = "HTTPS to S3 gateway endpoint (ECR image-layer pulls)"
 }
 
 resource "aws_vpc_security_group_ingress_rule" "vpc_endpoints_from_ecs_directus" {

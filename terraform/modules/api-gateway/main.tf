@@ -65,6 +65,18 @@ resource "aws_apigatewayv2_stage" "v1" {
   tags = {
     Environment = var.environment
   }
+
+  # Renaming this stage (v1 -> $default) force-replaces it. Without
+  # this, Terraform's default destroy-then-create ordering tries to
+  # delete the old stage first — and AWS refuses with "Deleting stage
+  # v1 failed. Please remove all base path mappings related to the
+  # stage in your domains" as long as aws_apigatewayv2_api_mapping.v1
+  # still points at it (a real error from a live apply). Creating the
+  # new stage first lets that mapping repoint to it before the old
+  # stage is deleted.
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_cloudwatch_log_group" "api_gateway" {

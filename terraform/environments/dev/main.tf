@@ -81,6 +81,11 @@ module "rds_proxy" {
   # real error from publisher_import_writer's first live invocation in
   # prod.
   iam_auth_secret_arns = values(module.secrets_manager.iam_auth_role_secret_arns)
+  # End-to-end IAM auth (default_auth_scheme = IAM_AUTH) needs the
+  # proxy's own execution role to have rds-db:connect for these same
+  # roles too, not just a registered secret — confirmed by a real
+  # "PAM authentication failed" error in prod without this grant.
+  iam_auth_db_usernames = keys(module.secrets_manager.iam_auth_role_secret_arns)
 }
 
 module "s3" {

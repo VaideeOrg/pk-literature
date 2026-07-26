@@ -25,6 +25,9 @@
 # uncovered that this was never wired up despite being the documented
 # intent everywhere else in this codebase.
 
+data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}
+
 data "aws_iam_policy_document" "rds_proxy_assume_role" {
   statement {
     effect  = "Allow"
@@ -54,6 +57,37 @@ resource "aws_iam_role_policy" "rds_proxy_secrets" {
   name   = "secrets-access"
   role   = aws_iam_role.rds_proxy.id
   policy = data.aws_iam_policy_document.rds_proxy_secrets.json
+}
+
+# End-to-end IAM auth (default_auth_scheme = IAM_AUTH below) means the
+# proxy itself — not just the connecting client — presents IAM
+# credentials to the backend Postgres instance for every role in
+# var.iam_auth_db_usernames. Without this grant on the proxy's own
+# execution role, that backend-side authentication attempt fails; a
+# real live invocation surfaced this as Postgres's own "PAM
+# authentication failed for user <role>" rather than a clearer IAM
+# error, since (per AWS's own guidance) the proxy's role needs
+# rds-db:connect in addition to the secretsmanager:GetSecretValue above
+# even when a role connects via IAM, not a stored password.
+data "aws_iam_policy_document" "rds_proxy_rds_connect" {
+  count = length(var.iam_auth_db_usernames) > 0 ? 1 : 0
+
+  statement {
+    effect  = "Allow"
+    actions = ["rds-db:connect"]
+    resources = [
+      for username in var.iam_auth_db_usernames :
+      "arn:aws:rds-db:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:dbuser:${element(split(":", aws_db_proxy.this.arn), 6)}/${username}"
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "rds_proxy_rds_connect" {
+  count = length(var.iam_auth_db_usernames) > 0 ? 1 : 0
+
+  name   = "rds-connect"
+  role   = aws_iam_role.rds_proxy.id
+  policy = data.aws_iam_policy_document.rds_proxy_rds_connect[0].json
 }
 
 resource "aws_db_proxy" "this" {

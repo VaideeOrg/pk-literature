@@ -102,7 +102,11 @@ module "ecs_directus" {
   }
 
   secrets = {
-    DB_PASSWORD    = module.secrets_manager.directus_db_password_secret_arn
+    # :password:: extracts just that JSON key — the underlying secret
+    # is jsonencode({ username, password }) so RDS Proxy's SECRETS auth
+    # can match this role by username (see secrets-manager module's
+    # directus_db comment); DB_PASSWORD still gets just the bare value.
+    DB_PASSWORD    = "${module.secrets_manager.directus_db_password_secret_arn}:password::"
     KEY            = module.secrets_manager.directus_key_secret_arn
     SECRET         = module.secrets_manager.directus_secret_secret_arn
     ADMIN_PASSWORD = module.secrets_manager.directus_admin_password_secret_arn

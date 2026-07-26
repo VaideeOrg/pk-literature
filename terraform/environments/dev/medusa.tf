@@ -85,7 +85,11 @@ module "ecs_medusa" {
   }
 
   secrets = {
-    PGPASSWORD    = module.secrets_manager.medusa_db_password_secret_arn
+    # :password:: extracts just that JSON key — see
+    # secrets-manager module's medusa_db comment for why (RDS
+    # Proxy's SECRETS auth needs the secret's username field to
+    # match this role; PGPASSWORD still gets just the bare value).
+    PGPASSWORD    = "${module.secrets_manager.medusa_db_password_secret_arn}:password::"
     JWT_SECRET    = module.secrets_manager.medusa_jwt_secret_secret_arn
     COOKIE_SECRET = module.secrets_manager.medusa_cookie_secret_secret_arn
   }

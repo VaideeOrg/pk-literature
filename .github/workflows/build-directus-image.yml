@@ -24,7 +24,7 @@ on:
       directus_version:
         description: "Upstream directus/directus version to build from and tag as (must match environments/*/variables.tf's directus_image_tag to actually roll out)."
         required: true
-        default: "11.17.4"
+        default: "10.13.4"
 
 permissions:
   id-token: write

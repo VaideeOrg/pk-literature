@@ -26,9 +26,9 @@ variable "azs" {
 }
 
 variable "directus_image_tag" {
-  description = "Tag mirrored into pk-literature/directus by .github/workflows/mirror-directus-image.yml — matches apps/directus/Dockerfile's pinned base."
+  description = "Tag mirrored into pk-literature/directus by .github/workflows/build-directus-image.yml — matches apps/directus/Dockerfile's pinned base. See apps/directus/README.md's \"Known issue\": 11.17.4 crashed on first boot against real RDS Postgres; 10.13.4 is the next untested candidate."
   type        = string
-  default     = "11.17.4"
+  default     = "10.13.4"
 }
 
 variable "medusa_image_tag" {

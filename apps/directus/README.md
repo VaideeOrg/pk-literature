@@ -40,18 +40,37 @@ Every migration/Terraform/extension-build/typecheck step in this phase
 was validated for real (see each file's own comments for specifics).
 The one thing that could **not** be validated end-to-end is a running
 Directus instance: both Directus 11.17.4 and 12.1.1 crashed during
-first-boot bootstrap in this sandbox, at the built-in
+first-boot bootstrap in an earlier local sandbox, at the built-in
 `20251014A-add-project-owner` migration, with an error trying to
-introspect `public.pgmigrations`. This reproduced identically against a
+introspect `public.pgmigrations`. That reproduced identically against a
 completely empty, isolated database with none of this repo's schemas
-or tables present — proving it is not caused by anything in this repo
-(our migrations, our grants, our schema layout). It looks like a
-genuine bug in those Directus versions triggered by something specific
-to this sandbox's Postgres/Node environment; it may well not reproduce
-on RDS Postgres in real AWS. Directus 10.13.4 was tried as a further
-data point but failed to even `npm install` here (a native module,
-`isolated-vm`, fails to build via `node-gyp` in this sandbox) —
-inconclusive either way.
+or tables present — proving it wasn't caused by anything in this repo
+(our migrations, our grants, our schema layout).
+
+**Update**: 11.17.4's crash has since reproduced live, against the real
+prod RDS Postgres (identical error/stack) — after the real networking,
+TLS, and IAM issues blocking the DB connection itself were all fixed,
+Directus reached this exact migration and crashed the same way. So the
+earlier "may not reproduce on RDS Postgres in real AWS" hope did not
+pan out; this is confirmed to be a genuine upstream bug in that
+Directus version (or a shared bug across the 11.x/12.x lines — 12.1.1
+was never independently re-verified live, only carried over from the
+earlier sandbox finding). `directus/directus:12.1.1` is also the
+current latest upstream release as of this writing, so there's no
+newer patch to try.
+
+**Currently pinned: 10.13.4** — a prior sandbox attempt at this version
+never actually reached a live boot (it failed a local, unrelated `npm
+install` step — a native module, `isolated-vm`, failing to build via
+`node-gyp` in that sandbox specifically), so it's a genuinely untested
+candidate for this bug, not a ruled-out one. It predates whenever the
+`20251014A-add-project-owner` migration was introduced. **Known
+consequence**: `extensions/operations/eventbridge-put-event/package.json`
+declares `"host": "^11.0.0"` — Directus 10 will very likely refuse to
+load this extension at all, meaning SPEC-03's "Trigger catalog publish
+event" Flow operation needs re-verifying (or the extension's own host
+range and API usage revisited against Directus 10's SDK) once 10.13.4
+is confirmed to actually boot cleanly.
 
 Practical consequence: `scripts/bootstrap.ts` and the collection/role/
 permission design in this README are written carefully against
@@ -61,12 +80,12 @@ Directus's documented API and typechecked against the real
 bootstrap script nor the `eventbridge-put-event` extension's runtime
 behavior have been round-tripped against an actual running Directus.
 Treat both as reviewed-but-untested. Before relying on this in a real
-environment: bring up the ECS task in dev, confirm it boots cleanly
-(if it doesn't, this same crash needs to be root-caused against a real
-Directus issue tracker/version bump — it is not a "fix our config"
-problem based on the evidence above), then run the bootstrap script
-and manually verify a Catalog Editor and Senior Editor account behave
-as SPEC-03 describes before treating either role as trustworthy.
+environment: confirm the ECS task boots cleanly on 10.13.4 (if it
+doesn't either, this needs root-causing against Directus's own issue
+tracker rather than another version guess), then run the bootstrap
+script and manually verify a Catalog Editor and Senior Editor account
+behave as SPEC-03 describes before treating either role as
+trustworthy.
 
 ## Deliberately out of scope for this pass
 

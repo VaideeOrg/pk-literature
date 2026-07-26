@@ -77,20 +77,28 @@ module "ecs_directus" {
   target_group_arn   = module.alb_directus.target_group_arn
 
   environment_variables = {
-    DB_CLIENT                  = "pg"
-    DB_HOST                    = module.rds_proxy.proxy_endpoint
-    DB_PORT                    = "5432"
-    DB_DATABASE                = "pk_literature"
-    DB_USER                    = local.directus_db_user
-    DB_SSL_REJECT_UNAUTHORIZED = "true"
-    PUBLIC_URL                 = "https://directus.${var.domain_name}"
-    ADMIN_EMAIL                = module.secrets_manager.directus_admin_email
-    STORAGE_LOCATIONS          = "s3"
-    STORAGE_S3_DRIVER          = "s3"
-    STORAGE_S3_BUCKET          = module.s3.bucket_id
-    STORAGE_S3_REGION          = data.aws_region.current.name
-    EVENTBRIDGE_BUS_NAME       = module.eventbridge.bus_name
-    WEBSOCKETS_ENABLED         = "false"
+    DB_CLIENT   = "pg"
+    DB_HOST     = module.rds_proxy.proxy_endpoint
+    DB_PORT     = "5432"
+    DB_DATABASE = "pk_literature"
+    DB_USER     = local.directus_db_user
+    # Directus/knex's env-to-config nesting uses a double
+    # underscore for nested driver options (DB_SSL__<KEY> ->
+    # connection.ssl.<key>), not a single underscore — the single-
+    # underscore version silently did nothing, so RDS Proxy (which
+    # requires TLS) rejected every connection with "This RDS Proxy
+    # requires TLS connections", a real error from this task's own
+    # logs. Presence of a non-empty ssl object is what actually
+    # turns TLS on; a separate DB_SSL=true isn't needed.
+    DB_SSL__REJECT_UNAUTHORIZED = "true"
+    PUBLIC_URL                  = "https://directus.${var.domain_name}"
+    ADMIN_EMAIL                 = module.secrets_manager.directus_admin_email
+    STORAGE_LOCATIONS           = "s3"
+    STORAGE_S3_DRIVER           = "s3"
+    STORAGE_S3_BUCKET           = module.s3.bucket_id
+    STORAGE_S3_REGION           = data.aws_region.current.name
+    EVENTBRIDGE_BUS_NAME        = module.eventbridge.bus_name
+    WEBSOCKETS_ENABLED          = "false"
   }
 
   secrets = {

@@ -42,9 +42,21 @@ const databaseUrl =
   process.env.DATABASE_URL ??
   `postgres://${process.env.PGUSER}:${encodeURIComponent(process.env.PGPASSWORD ?? "")}@${process.env.PGHOST}:${process.env.PGPORT ?? "5432"}/${process.env.PGDATABASE}`;
 
+// RDS Proxy requires TLS (confirmed by Directus's own real "This RDS
+// Proxy requires TLS connections" FATAL against the same proxy); a bare
+// databaseUrl with no ssl option connects without TLS and gets rejected
+// the same way. PGSSL=disable mirrors every Lambda service's own
+// database.module.ts convention for local dev (docker-compose has no
+// TLS listener). rejectUnauthorized: true is safe here — unlike a
+// direct RDS instance connection (apps/migration-runner needs a bundled
+// CA for that), RDS Proxy presents a publicly-trusted certificate.
+const databaseDriverOptions =
+  process.env.PGSSL === "disable" ? {} : { connection: { ssl: { rejectUnauthorized: true } } };
+
 module.exports = defineConfig({
   projectConfig: {
     databaseUrl,
+    databaseDriverOptions,
     databaseSchema: process.env.DATABASE_SCHEMA || "medusa",
     http: {
       storeCors: process.env.STORE_CORS || "",

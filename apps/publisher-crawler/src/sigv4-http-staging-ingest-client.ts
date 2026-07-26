@@ -58,7 +58,15 @@ export class SigV4HttpStagingIngestClient implements StagingIngestClient {
   }
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const url = new URL(path, this.baseUrl);
+    // NOT `new URL(path, this.baseUrl)`: WHATWG URL resolution treats an
+    // absolute-path second argument (path starts with "/") as replacing
+    // the base's own path entirely, silently dropping baseUrl's "/v1"
+    // — every request was actually hitting `${origin}${path}` with no
+    // "/v1" prefix at all, matching none of the registered API Gateway
+    // route keys (which all include "/v1/" literally). Plain
+    // concatenation, same as apps/web/src/lib/api/server-fetch.ts's
+    // established `${API_BASE_URL}${path}` pattern, avoids that.
+    const url = new URL(`${this.baseUrl.replace(/\/+$/, "")}${path}`);
     const bodyText = body !== undefined ? JSON.stringify(body) : undefined;
 
     const httpRequest = new HttpRequest({

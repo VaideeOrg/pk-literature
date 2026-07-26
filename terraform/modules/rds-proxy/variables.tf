@@ -29,3 +29,9 @@ variable "additional_auth_secret_arns" {
   type        = list(string)
   default     = []
 }
+
+variable "iam_auth_secret_arns" {
+  description = "Secrets Manager secret ARNs registering DB users that authenticate via IAM (iam_auth = REQUIRED), not a stored password — e.g. every Lambda service's own DB role (catalog_api_readonly, publisher_import_writer, ...). RDS Proxy matches incoming connections to one of these entries by the secret's own username field; without a registered entry here, it rejects the connection outright with \"This RDS proxy has no credentials for the role <role>\" even though the client never actually presents the secret's password — a real error from a live invocation that first surfaced this gap."
+  type        = list(string)
+  default     = []
+}

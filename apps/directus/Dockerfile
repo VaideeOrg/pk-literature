@@ -24,6 +24,24 @@
 # loader accepts the extension, not whether its runtime API is actually
 # unchanged between major versions, so this is itself untested.
 #
+# All three versions failed identically, always through RDS Proxy — the
+# one constant across every attempt. RDS Proxy multiplexes logical
+# client connections onto fewer physical Postgres backends, which is a
+# plausible mechanism for the observed pattern (create tables, then the
+# very next query claims they don't exist). directus.tf now points
+# DB_HOST at RDS directly, bypassing the proxy, the same way
+# apps/migration-runner already does for an unrelated RDS Proxy
+# interaction issue. A direct RDS connection needs Amazon's own RDS CA
+# bundle for TLS verification — unlike RDS Proxy, whose certificate
+# chains to a publicly-trusted root, RDS's own certificate doesn't
+# verify against Node's default trust store (the exact
+# "self-signed certificate in certificate chain" error
+# apps/migration-runner hit the first time it connected directly to RDS
+# — see its own header comment). Downloaded at build time (this stage
+# has real internet access; the running container's own private-isolated
+# subnet doesn't), same source AWS publishes and migration-runner's own
+# packaging script already uses.
+#
 # DIRECTUS_VERSION must be declared here, before the first FROM — an
 # ARG used in a FROM's image reference has to be declared before *any*
 # FROM in the file, or it's scoped only to whichever stage it's inside
@@ -39,7 +57,10 @@ COPY extensions/operations/eventbridge-put-event/package.json ./
 RUN npm install
 COPY extensions/operations/eventbridge-put-event/ ./
 RUN npm run build
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem -o /build/rds-ca-bundle.pem
 
 FROM directus/directus:${DIRECTUS_VERSION}
 COPY --from=extension-build /build/dist /directus/extensions/operations/eventbridge-put-event/dist
 COPY --from=extension-build /build/package.json /directus/extensions/operations/eventbridge-put-event/package.json
+COPY --from=extension-build /build/rds-ca-bundle.pem /directus/rds-ca-bundle.pem

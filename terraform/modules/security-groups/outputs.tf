@@ -33,3 +33,8 @@ output "ecs_medusa_sg_id" {
 output "migration_runner_sg_id" {
   value = aws_security_group.migration_runner.id
 }
+
+output "cloudshell_db_access_sg_id" {
+  description = "Select this as the security group when creating an AWS CloudShell VPC environment for ad-hoc DB access — it's pre-wired with egress to RDS Proxy on 5432."
+  value       = aws_security_group.cloudshell_db_access.id
+}

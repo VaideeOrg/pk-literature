@@ -196,7 +196,7 @@ empty until you explicitly run their build workflows —
 its own header comment). The ECS services from step 3 will apply
 successfully either way; tasks just won't start until an image with
 the tag `directus_image_tag`/`medusa_image_tag` (`environments/<env>/variables.tf`,
-currently `11.17.4`/`2.17.2`) exists in ECR.
+currently `12.1.1`/`2.17.2-1`) exists in ECR.
 
 ```
 # GitHub Actions → Build Directus Image → Run workflow (directus_version input)

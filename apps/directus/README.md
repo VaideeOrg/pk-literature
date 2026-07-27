@@ -59,18 +59,48 @@ earlier sandbox finding). `directus/directus:12.1.1` is also the
 current latest upstream release as of this writing, so there's no
 newer patch to try.
 
-**Currently pinned: 10.13.4** — a prior sandbox attempt at this version
-never actually reached a live boot (it failed a local, unrelated `npm
-install` step — a native module, `isolated-vm`, failing to build via
-`node-gyp` in that sandbox specifically), so it's a genuinely untested
-candidate for this bug, not a ruled-out one. It predates whenever the
-`20251014A-add-project-owner` migration was introduced. **Known
-consequence**: `extensions/operations/eventbridge-put-event/package.json`
-declares `"host": "^11.0.0"` — Directus 10 will very likely refuse to
-load this extension at all, meaning SPEC-03's "Trigger catalog publish
-event" Flow operation needs re-verifying (or the extension's own host
-range and API usage revisited against Directus 10's SDK) once 10.13.4
-is confirmed to actually boot cleanly.
+**10.13.4 was then tried live and DID boot further than 11.17.4** — it
+successfully created its own system tables ("Installing Directus system
+tables..." in the real CloudWatch logs), but then crashed immediately
+afterward at `runSeed`'s own "Database is already installed" check
+(`api/src/database/seeds/run.ts`'s guard against the `directus_collections`
+table already existing — tripping on the very tables it had just
+created moments earlier, in the same single bootstrap invocation).
+This is a *different* step than 11.17.4's migration crash, but the same
+class of bug: Directus's own bootstrap orchestration incorrectly
+believing the database is already installed, immediately after
+installing it for the first time.
+
+Two follow-up theories were tried and ruled out against this exact
+10.13.4 failure, live:
+- **Schema/search_path**: `directus_app`'s search_path was scoped to
+  the dedicated `directus` schema only (not `public`) — a documented
+  Directus limitation for non-public-schema deployments. Adding
+  `public` to the search_path (migration
+  `20260101000012_directus_search_path_include_public.sql`) plus a
+  fresh schema reset made no difference — identical crash, same step.
+- **`bootstrap --skipAdminInit`**: investigated but never actually
+  wired up, because reading Directus's own source
+  (`api/src/cli/commands/bootstrap/index.ts`,
+  `api/src/database/seeds/run.ts`) showed this flag only skips
+  `createAdmin()` — a step neither the 11.17.4 nor the 10.13.4 crash
+  ever reached. Both crashes happen in core install/migration/seed code
+  that runs unconditionally regardless of this flag, so it would not
+  have helped.
+
+**Currently pinned: 12.1.1** — the current latest upstream release.
+Its "also crashes" data point (noted above) was only ever secondhand,
+carried over from an earlier local-sandbox investigation and never
+independently re-verified live by this session against real RDS
+Postgres — worth treating as a fresh, unconfirmed test rather than a
+known-bad result. **Known consequence**:
+`extensions/operations/eventbridge-put-event/package.json`'s `host`
+range has been widened from `^11.0.0` to `^11.0.0 || ^12.0.0` to let
+Directus 12 load it at all — that only controls whether the extension
+loader accepts it, not whether its runtime API is actually unchanged
+between major versions, so the "Trigger catalog publish event" Flow
+operation needs re-verifying (or the extension's own API usage
+revisited) once 12.1.1 is confirmed to actually boot.
 
 Practical consequence: `scripts/bootstrap.ts` and the collection/role/
 permission design in this README are written carefully against
@@ -80,12 +110,14 @@ Directus's documented API and typechecked against the real
 bootstrap script nor the `eventbridge-put-event` extension's runtime
 behavior have been round-tripped against an actual running Directus.
 Treat both as reviewed-but-untested. Before relying on this in a real
-environment: confirm the ECS task boots cleanly on 10.13.4 (if it
+environment: confirm the ECS task boots cleanly on 12.1.1 (if it
 doesn't either, this needs root-causing against Directus's own issue
-tracker rather than another version guess), then run the bootstrap
-script and manually verify a Catalog Editor and Senior Editor account
-behave as SPEC-03 describes before treating either role as
-trustworthy.
+tracker — or reconsidering a bespoke editorial admin app instead of
+self-hosted Directus, given three different versions have now hit the
+same class of bootstrap bug — rather than another version guess), then
+run the bootstrap script and manually verify a Catalog Editor and
+Senior Editor account behave as SPEC-03 describes before treating
+either role as trustworthy.
 
 ## Deliberately out of scope for this pass
 

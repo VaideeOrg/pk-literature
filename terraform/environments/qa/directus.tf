@@ -77,8 +77,14 @@ module "ecs_directus" {
   target_group_arn   = module.alb_directus.target_group_arn
 
   environment_variables = {
-    DB_CLIENT   = "pg"
-    DB_HOST     = module.rds_proxy.proxy_endpoint
+    DB_CLIENT = "pg"
+    # Pointed at RDS directly, bypassing RDS Proxy — testing whether
+    # RDS Proxy's connection multiplexing is behind Directus's own
+    # bootstrap crashing identically on three different versions, all
+    # through the proxy (see security-groups module's
+    # ecs_directus_to_rds comment for the full reasoning). Revert to
+    # module.rds_proxy.proxy_endpoint if this doesn't pan out.
+    DB_HOST     = module.rds.db_address
     DB_PORT     = "5432"
     DB_DATABASE = "pk_literature"
     DB_USER     = local.directus_db_user
@@ -90,6 +96,14 @@ module "ecs_directus" {
     # requires TLS connections", a real error from this task's own
     # logs. Presence of a non-empty ssl object is what actually
     # turns TLS on; a separate DB_SSL=true isn't needed.
+    #
+    # DB_SSL__CA: a direct RDS connection (unlike RDS Proxy) needs
+    # Amazon's own RDS CA bundle to verify — its certificate doesn't
+    # chain to a publicly-trusted root the way RDS Proxy's does. Baked
+    # into the image at build time (apps/directus/Dockerfile) at this
+    # exact path — the running task has no internet route to fetch it
+    # itself (private-isolated tier, ADR-009).
+    DB_SSL__CA                  = "/directus/rds-ca-bundle.pem"
     DB_SSL__REJECT_UNAUTHORIZED = "true"
     PUBLIC_URL                  = "https://directus.${var.domain_name}"
     ADMIN_EMAIL                 = module.secrets_manager.directus_admin_email

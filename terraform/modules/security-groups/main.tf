@@ -193,6 +193,15 @@ resource "aws_vpc_security_group_ingress_rule" "rds_from_migration_runner" {
   description                  = "Postgres from migration-runner Lambda, direct (not via RDS Proxy)"
 }
 
+resource "aws_vpc_security_group_ingress_rule" "rds_from_ecs_directus" {
+  security_group_id            = aws_security_group.rds.id
+  referenced_security_group_id = aws_security_group.ecs_directus.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  description                  = "Postgres from Directus ECS task, direct (not via RDS Proxy) — testing the RDS Proxy bootstrap-bug hypothesis"
+}
+
 # --- rds-proxy-sg: ingress 5432 from lambda-db-sg/ecs-directus-sg/ecs-medusa-sg/cloudshell-db-access-sg; egress 5432 to rds-sg ---
 
 resource "aws_vpc_security_group_ingress_rule" "rds_proxy_from_lambda_db" {
@@ -413,7 +422,29 @@ resource "aws_vpc_security_group_egress_rule" "ecs_directus_to_rds_proxy" {
   from_port                    = 5432
   to_port                      = 5432
   ip_protocol                  = "tcp"
-  description                  = "Postgres to RDS Proxy"
+  description                  = "Postgres to RDS Proxy (unused while directus.tf points DB_HOST at RDS directly — see ecs_directus_to_rds below — left in place so switching back doesn't need a new apply cycle)"
+}
+
+# Directus's bootstrap has now hit the identical "Database is already
+# installed" false positive on three separate Directus versions
+# (11.17.4/10.13.4/12.1.1), always through RDS Proxy — the one constant
+# across every attempt. RDS Proxy multiplexes logical client connections
+# onto fewer physical Postgres backends and can route a client's very
+# next query to a different physical connection than the one before it
+# (with documented "connection pinning" exceptions for certain
+# operations) — a plausible mechanism for exactly the observed pattern:
+# "Installing Directus system tables..." succeeds, then the very next
+# query claims those tables don't exist... then immediately reverses to
+# "already installed". Testing Directus against RDS directly, bypassing
+# the proxy entirely, the same way apps/migration-runner already does
+# for its own (unrelated) RDS Proxy interaction issue.
+resource "aws_vpc_security_group_egress_rule" "ecs_directus_to_rds" {
+  security_group_id            = aws_security_group.ecs_directus.id
+  referenced_security_group_id = aws_security_group.rds.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  description                  = "Postgres directly to RDS (not via RDS Proxy) — testing whether RDS Proxy's connection multiplexing is behind Directus's repeated bootstrap failure"
 }
 
 resource "aws_vpc_security_group_egress_rule" "ecs_directus_to_vpc_endpoints" {

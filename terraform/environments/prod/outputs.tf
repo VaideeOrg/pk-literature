@@ -6,6 +6,16 @@ output "rds_proxy_endpoint" {
   value = module.rds_proxy.proxy_endpoint
 }
 
+output "cloudshell_db_access_sg_id" {
+  description = "Select this as the security group when creating an AWS CloudShell VPC environment for ad-hoc DB access (psql/pgAdmin via SSM tunnel)."
+  value       = module.security_groups.cloudshell_db_access_sg_id
+}
+
+output "private_isolated_subnet_ids" {
+  description = "Pick any of these subnets when creating an AWS CloudShell VPC environment — same tier RDS Proxy itself sits in."
+  value       = module.vpc.private_isolated_subnet_ids
+}
+
 output "api_gateway_invoke_url" {
   value = module.api_gateway.invoke_url
 }

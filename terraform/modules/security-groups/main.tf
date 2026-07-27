@@ -133,6 +133,36 @@ resource "aws_security_group" "migration_runner" {
   }
 }
 
+# Attached to an AWS CloudShell VPC environment (console-side, not
+# Terraform-managed — this SG only exists so that console config has
+# something to select) for ad-hoc psql/pgAdmin-via-SSH-tunnel access to
+# RDS Proxy. No ingress rules of its own — outbound-only, matching
+# migration_runner's shape, since CloudShell only ever initiates the
+# connection, never receives one.
+resource "aws_security_group" "cloudshell_db_access" {
+  name_prefix = "pk-literature-${var.environment}-cloudshell-db-access-"
+  vpc_id      = var.vpc_id
+  description = "Selected as the CloudShell VPC environment's security group for ad-hoc DB access — no ingress, outbound to RDS Proxy only"
+
+  tags = {
+    Name        = "pk-literature-${var.environment}-cloudshell-db-access"
+    Environment = var.environment
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_vpc_security_group_egress_rule" "cloudshell_db_access_to_rds_proxy" {
+  security_group_id            = aws_security_group.cloudshell_db_access.id
+  referenced_security_group_id = aws_security_group.rds_proxy.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  description                  = "Postgres to RDS Proxy, for ad-hoc CloudShell DB access"
+}
+
 resource "aws_vpc_security_group_egress_rule" "migration_runner_to_rds" {
   security_group_id            = aws_security_group.migration_runner.id
   referenced_security_group_id = aws_security_group.rds.id
@@ -163,7 +193,7 @@ resource "aws_vpc_security_group_ingress_rule" "rds_from_migration_runner" {
   description                  = "Postgres from migration-runner Lambda, direct (not via RDS Proxy)"
 }
 
-# --- rds-proxy-sg: ingress 5432 from lambda-db-sg/ecs-directus-sg/ecs-medusa-sg; egress 5432 to rds-sg ---
+# --- rds-proxy-sg: ingress 5432 from lambda-db-sg/ecs-directus-sg/ecs-medusa-sg/cloudshell-db-access-sg; egress 5432 to rds-sg ---
 
 resource "aws_vpc_security_group_ingress_rule" "rds_proxy_from_lambda_db" {
   security_group_id            = aws_security_group.rds_proxy.id
@@ -198,6 +228,15 @@ resource "aws_vpc_security_group_ingress_rule" "rds_proxy_from_ecs_medusa" {
   to_port                      = 5432
   ip_protocol                  = "tcp"
   description                  = "Postgres from Medusa ECS task"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "rds_proxy_from_cloudshell" {
+  security_group_id            = aws_security_group.rds_proxy.id
+  referenced_security_group_id = aws_security_group.cloudshell_db_access.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  description                  = "Postgres from an AWS CloudShell VPC environment, for ad-hoc DB access"
 }
 
 resource "aws_vpc_security_group_egress_rule" "rds_proxy_to_rds" {

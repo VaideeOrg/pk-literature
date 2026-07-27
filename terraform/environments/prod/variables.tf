@@ -85,9 +85,9 @@ variable "existing_interface_endpoint_sg_ids" {
 }
 
 variable "directus_image_tag" {
-  description = "Tag mirrored into pk-literature/directus by .github/workflows/build-directus-image.yml — matches apps/directus/Dockerfile's pinned base. See apps/directus/README.md's \"Known issue\": 11.17.4 and 10.13.4 both crashed on first boot against real RDS Postgres; 12.1.1 is the next candidate, requiring the eventbridge-put-event extension's host range to be widened too."
+  description = "Tag pushed by .github/workflows/build-directus-image.yml (its own directus_image_tag input, separate from the upstream directus_version build-arg). ECR tags are IMMUTABLE (terraform/bootstrap/ecr.tf), and this image bakes in our own layer on top of the pinned upstream directus/directus base (eventbridge-put-event extension, RDS CA bundle for the direct-to-RDS test) — a change to that layer needs a new tag to roll out even when the upstream version hasn't moved, same as medusa_image_tag's own -N convention. The -1 suffix marks our own build revision 1 of upstream 12.1.1 (adds the RDS CA bundle for the RDS Proxy bypass test - see directus.tf and security-groups module's ecs_directus_to_rds comment)."
   type        = string
-  default     = "12.1.1"
+  default     = "12.1.1-1"
 }
 
 variable "medusa_image_tag" {

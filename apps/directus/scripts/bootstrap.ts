@@ -2,9 +2,9 @@
  * Config-as-code bootstrap for the Editorial Workbench (SPEC-03).
  *
  * NOT independently verified against a live Directus instance — see
- * ../README.md's "Known issue" section (Directus 11.17.4/12.1.1 both
- * crash during first-boot bootstrap in this sandbox, even against a
- * completely empty database). Written against the documented
+ * ../README.md's "Known issue" section (Directus 11.17.4 and 10.13.4
+ * have both crashed during first-boot bootstrap against real RDS
+ * Postgres; 12.1.1 is the current attempt). Written against the documented
  * @directus/sdk v17 API surface and typechecked against its real type
  * definitions (no live server needed for that — `pnpm --filter directus
  * run typecheck` passes), but the request/response shapes below have

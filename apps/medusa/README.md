@@ -77,6 +77,22 @@ full `medusa build` needs a reachable Postgres to introspect at build
 time in some flows), and Directus's own attempt — a much lighter
 service — already spent significant effort in this sandbox and still
 could not get past first-boot. Treat this app as reviewed-but-untested.
+
+**Update**: the first real live boot (real prod ECS/RDS) crashed every
+Medusa module (Tax, Payment, Fulfillment, Notification, ...) with
+`relation "medusa.<table>" does not exist` — confirming the concern
+above about an unverified boot path. Root cause: the Dockerfile's
+`CMD` only ran `medusa start`, never Medusa's own `medusa db:migrate` —
+migration `20260401000004_medusa_app_role.sql` deliberately only
+creates the `medusa` schema/role, leaving Medusa's own module tables to
+Medusa's own migration CLI (a separate mechanism from every other hand-
+written SQL migration in this repo). Fixed by running `medusa
+db:migrate` before `medusa start` in the Dockerfile's `CMD` (safe on
+every boot — MikroORM tracks applied migrations, and `desired_count = 1`
+means no concurrent task to race against). Still unverified beyond
+that: whether the server actually stays up and the admin UI is
+reachable once the tables exist.
+
 Before relying on it in a real environment: run `medusa build` and
 `medusa start` against a real dev database, confirm the admin UI boots
 and an admin user can log in, then re-evaluate the scope-boundary

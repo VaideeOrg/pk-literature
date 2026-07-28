@@ -97,13 +97,21 @@ module "ecs_directus" {
     # logs. Presence of a non-empty ssl object is what actually
     # turns TLS on; a separate DB_SSL=true isn't needed.
     #
-    # DB_SSL__CA: a direct RDS connection (unlike RDS Proxy) needs
-    # Amazon's own RDS CA bundle to verify — its certificate doesn't
-    # chain to a publicly-trusted root the way RDS Proxy's does. Baked
-    # into the image at build time (apps/directus/Dockerfile) at this
-    # exact path — the running task has no internet route to fetch it
-    # itself (private-isolated tier, ADR-009).
-    DB_SSL__CA                  = "/directus/rds-ca-bundle.pem"
+    # DB_SSL__CA_FILE (not DB_SSL__CA): a direct RDS connection (unlike
+    # RDS Proxy) needs Amazon's own RDS CA bundle to verify — its
+    # certificate doesn't chain to a publicly-trusted root the way RDS
+    # Proxy's does. Directus's env-to-config loader only reads a
+    # variable's value as a *file path* and substitutes its contents
+    # when the name has the _FILE suffix (its documented docker-secrets
+    # convention) — DB_SSL__CA alone treats the value as the literal CA
+    # string, so a bare path here silently fails TLS verification
+    # (real error from this task's own logs: "self-signed certificate
+    # in certificate chain" - the RDS cert was never actually checked
+    # against anything). Baked into the image at build time
+    # (apps/directus/Dockerfile) at this exact path — the running task
+    # has no internet route to fetch it itself (private-isolated tier,
+    # ADR-009).
+    DB_SSL__CA_FILE             = "/directus/rds-ca-bundle.pem"
     DB_SSL__REJECT_UNAUTHORIZED = "true"
     PUBLIC_URL                  = "https://directus.${var.domain_name}"
     ADMIN_EMAIL                 = module.secrets_manager.directus_admin_email

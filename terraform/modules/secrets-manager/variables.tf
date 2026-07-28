@@ -14,8 +14,15 @@ variable "directus_db_username" {
 }
 
 variable "directus_admin_email" {
+  # Directus's admin-account email validator (Joi's string().email(),
+  # which checks the domain's TLD against the real IANA list by
+  # default) rejects the placeholder "admin@pk-literature.example" -
+  # ".example" is an RFC 2606 reserved domain, never delegated as a
+  # real TLD. A real, checked-in-by-request address is used instead of
+  # another placeholder since this becomes the login for Directus's
+  # first super-admin account.
   type    = string
-  default = "admin@pk-literature.example"
+  default = "www.vaidees@gmail.com"
 }
 
 variable "medusa_db_username" {

@@ -60,7 +60,17 @@ module "alb_directus" {
   regional_certificate_arn = module.route53_acm.regional_certificate_arn
   hosted_zone_id           = module.route53_acm.zone_id
   target_port              = 8055
-  health_check_path        = "/server/health"
+  # Not /server/health - Directus 12.x deliberately restricted that
+  # endpoint to authenticated requests (PR #27160, merged for v12.0.0:
+  # "Restricted /server/health to authenticated users... use
+  # /server/ping for liveness checks"), so every anonymous ALB health
+  # check gets a real, working-as-designed 403 - confirmed live
+  # (Directus's own request log: "GET /server/health 403"), which is
+  # why the task kept cycling even after the health_check_grace_period
+  # fix (that only delays ECS acting on a failing check, it doesn't
+  # change what the check itself returns). /server/ping needs no auth
+  # at all (registered directly in Directus's app.ts, always 200).
+  health_check_path = "/server/ping"
 }
 
 module "ecs_directus" {

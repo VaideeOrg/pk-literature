@@ -11,20 +11,32 @@ name: Build Directus Image
 #
 # GATED, MANUAL-TRIGGER ONLY, matching terraform-apply.yml's philosophy:
 # nothing pushes a new image on every merge. Run this explicitly, then
-# separately re-run terraform-apply.yml (bumping directus_image_tag if
-# you're moving to a new upstream version) to roll it out.
+# separately re-run terraform-apply.yml (bumping directus_image_tag) to
+# roll it out.
 #
 # ECR repo tags are IMMUTABLE (terraform/bootstrap/ecr.tf) — pushing a
 # tag that already exists fails loudly rather than silently overwriting,
 # so this checks first and skips the push if the tag is already there.
+# directus_version and directus_image_tag are separate inputs (unlike
+# Medusa's single-input workflow) because this Dockerfile is a thin
+# layer on an official upstream image: the upstream version can stay
+# put while our own layer changes (extension, RDS CA bundle, ...), which
+# still needs a new pushed tag to actually roll out — same
+# already-shipped-a-fix-nobody-rebuilt trap medusa_image_tag's own
+# comment describes, just via a different axis (our layer vs. upstream
+# version).
 
 on:
   workflow_dispatch:
     inputs:
       directus_version:
-        description: "Upstream directus/directus version to build from and tag as (must match environments/*/variables.tf's directus_image_tag to actually roll out)."
+        description: "Upstream directus/directus version to build from (Dockerfile's DIRECTUS_VERSION build-arg)."
         required: true
         default: "12.1.1"
+      directus_image_tag:
+        description: "Tag to push (must match environments/*/variables.tf's directus_image_tag to actually roll out). ECR tags are IMMUTABLE — a change to our own layer (extension, CA bundle, ...) with the same upstream directus_version still needs a new tag here, or this workflow silently skips the push and the old image keeps running."
+        required: true
+        default: "12.1.1-1"
 
 permissions:
   id-token: write
@@ -53,7 +65,7 @@ jobs:
         run: |
           if aws ecr describe-images \
             --repository-name "$ECR_REPOSITORY" \
-            --image-ids imageTag="${{ inputs.directus_version }}" >/dev/null 2>&1; then
+            --image-ids imageTag="${{ inputs.directus_image_tag }}" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
@@ -65,9 +77,9 @@ jobs:
         run: |
           docker build \
             --build-arg DIRECTUS_VERSION="${{ inputs.directus_version }}" \
-            -t "${{ steps.ecr-login.outputs.registry }}/$ECR_REPOSITORY:${{ inputs.directus_version }}" \
+            -t "${{ steps.ecr-login.outputs.registry }}/$ECR_REPOSITORY:${{ inputs.directus_image_tag }}" \
             .
 
       - name: Push
         if: steps.check.outputs.exists == 'false'
-        run: docker push "${{ steps.ecr-login.outputs.registry }}/$ECR_REPOSITORY:${{ inputs.directus_version }}"
+        run: docker push "${{ steps.ecr-login.outputs.registry }}/$ECR_REPOSITORY:${{ inputs.directus_image_tag }}"

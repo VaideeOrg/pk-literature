@@ -142,7 +142,11 @@ resource "aws_security_group" "migration_runner" {
 resource "aws_security_group" "cloudshell_db_access" {
   name_prefix = "pk-literature-${var.environment}-cloudshell-db-access-"
   vpc_id      = var.vpc_id
-  description = "Selected as the CloudShell VPC environment's security group for ad-hoc DB access — no ingress, outbound to RDS Proxy only"
+  # AWS rejects non-ASCII characters (em dashes, curly quotes, ...) in
+  # GroupDescription/rule descriptions with a real InvalidParameterValue
+  # apply error, only characters in a-zA-Z0-9. _-:/()#,@[]+=&;{}!$* are
+  # accepted (no apostrophe either) - keep these plain.
+  description = "Selected as the CloudShell VPC environment security group for ad-hoc DB access - no ingress, outbound to RDS Proxy only"
 
   tags = {
     Name        = "pk-literature-${var.environment}-cloudshell-db-access"
@@ -199,7 +203,7 @@ resource "aws_vpc_security_group_ingress_rule" "rds_from_ecs_directus" {
   from_port                    = 5432
   to_port                      = 5432
   ip_protocol                  = "tcp"
-  description                  = "Postgres from Directus ECS task, direct (not via RDS Proxy) — testing the RDS Proxy bootstrap-bug hypothesis"
+  description                  = "Postgres from Directus ECS task, direct (not via RDS Proxy) - testing the RDS Proxy bootstrap bug hypothesis"
 }
 
 # --- rds-proxy-sg: ingress 5432 from lambda-db-sg/ecs-directus-sg/ecs-medusa-sg/cloudshell-db-access-sg; egress 5432 to rds-sg ---
@@ -422,7 +426,7 @@ resource "aws_vpc_security_group_egress_rule" "ecs_directus_to_rds_proxy" {
   from_port                    = 5432
   to_port                      = 5432
   ip_protocol                  = "tcp"
-  description                  = "Postgres to RDS Proxy (unused while directus.tf points DB_HOST at RDS directly — see ecs_directus_to_rds below — left in place so switching back doesn't need a new apply cycle)"
+  description                  = "Postgres to RDS Proxy (unused while directus.tf points DB_HOST at RDS directly, see ecs_directus_to_rds below - left in place so switching back doesnt need a new apply cycle)"
 }
 
 # Directus's bootstrap has now hit the identical "Database is already
@@ -444,7 +448,7 @@ resource "aws_vpc_security_group_egress_rule" "ecs_directus_to_rds" {
   from_port                    = 5432
   to_port                      = 5432
   ip_protocol                  = "tcp"
-  description                  = "Postgres directly to RDS (not via RDS Proxy) — testing whether RDS Proxy's connection multiplexing is behind Directus's repeated bootstrap failure"
+  description                  = "Postgres directly to RDS (not via RDS Proxy) - testing whether RDS Proxy connection multiplexing is behind Directus repeated bootstrap failure"
 }
 
 resource "aws_vpc_security_group_egress_rule" "ecs_directus_to_vpc_endpoints" {

@@ -61,7 +61,7 @@ payment in this repo today. `OrderCancelled`/`OrderShipped`/
 consequence — they're contracts waiting for that future module, not
 events any code in this repo currently emits.
 
-## Known issue — not live-verified
+## Known issue — resolved, now live-verified
 
 Same disclosed-limitation category as `apps/directus/README.md`: every
 file in this app is written directly against Medusa v2's documented
@@ -89,11 +89,30 @@ Medusa's own migration CLI (a separate mechanism from every other hand-
 written SQL migration in this repo). Fixed by running `medusa
 db:migrate` before `medusa start` in the Dockerfile's `CMD` (safe on
 every boot — MikroORM tracks applied migrations, and `desired_count = 1`
-means no concurrent task to race against). Still unverified beyond
-that: whether the server actually stays up and the admin UI is
-reachable once the tables exist.
+means no concurrent task to race against).
 
-Before relying on it in a real environment: run `medusa build` and
-`medusa start` against a real dev database, confirm the admin UI boots
-and an admin user can log in, then re-evaluate the scope-boundary
-section above before pointing operators at it for real order work.
+**A second, transient failure was seen once**: the very first cold-start
+attempt crashed with `relation "medusa.publishable_api_key_sales_channel"
+does not exist` (a module-link pivot table, created via Medusa's
+`defineLink()` system, not any single module's own migrations) while
+`create-defaults` tried to link the default sales channel to the
+default publishable API key. `medusa db:migrate` syncs module links by
+default in 2.17.2 (confirmed against the CLI source and official docs
+— no separate `db:sync-links` step is required), so this was most
+likely a one-time race on the very first empty-database run rather than
+a real gap; ECS's normal crash-and-restart behavior retried the task
+automatically, and the very next attempt logged `Syncing links...` →
+`Created following links tables ... (publishable_api_key_sales_channel)`
+→ `Links sync completed` → `Server is ready on port: 9000` cleanly, and
+has stayed up since.
+
+**Now confirmed live**: the admin UI at `https://medusa.<domain>/app`
+loads and an admin user (created via a one-off `aws ecs run-task`
+override running `npx medusa user -e <email> -p <password>` against the
+live task definition, since Medusa has no `ADMIN_EMAIL`/`ADMIN_PASSWORD`
+auto-provisioning env vars the way Directus does) can log in
+successfully. The scope-boundary section above still applies — this
+runs Medusa's own default data model in the `medusa` schema, not
+`commerce.*` — before pointing real operators at it for order work,
+re-evaluate that section and decide whether the custom-module
+integration it describes is still out of scope.

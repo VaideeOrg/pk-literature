@@ -57,7 +57,11 @@ COPY extensions/operations/eventbridge-put-event/package.json ./
 RUN npm install
 COPY extensions/operations/eventbridge-put-event/ ./
 RUN npm run build
-RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+# ca-certificates is only a Recommends of curl on Debian, not a hard
+# dependency - --no-install-recommends alone skipped it, leaving no
+# /etc/ssl/certs/ca-certificates.crt for curl to verify against
+# ("curl: (77) error setting certificate file", a real build failure).
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN curl -fsSL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem -o /build/rds-ca-bundle.pem
 
 FROM directus/directus:${DIRECTUS_VERSION}

@@ -58,6 +58,12 @@ variable "target_group_arn" {
   type = string
 }
 
+variable "health_check_grace_period_seconds" {
+  description = "How long ECS ignores a failing ALB health check after a task starts, before deciding it's actually unhealthy and killing it. Defaults to 0 (ECS's own default) - services whose container needs real time to become ready (DB migrations/bootstrap on every boot, not just a fast process start) should set this explicitly, or ECS kills the task mid-boot before it ever has a chance to pass a health check, loops forever between PROVISIONING/DEACTIVATING, and never converges - a real failure mode hit live by ecs_directus."
+  type        = number
+  default     = 0
+}
+
 variable "log_retention_days" {
   type    = number
   default = 30

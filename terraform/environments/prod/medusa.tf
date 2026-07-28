@@ -66,6 +66,15 @@ module "ecs_medusa" {
   security_group_ids = [module.security_groups.ecs_medusa_sg_id]
   target_group_arn   = module.alb_medusa.target_group_arn
 
+  # Same reasoning as ecs_directus's own grace period: the Dockerfile's
+  # CMD runs `medusa db:migrate` (migrations + link-sync) before `medusa
+  # start` on every boot - real work, not instant. Set proactively here
+  # even though Medusa's own crash-and-recover happened to self-heal via
+  # ECS's normal restart behavior rather than a health-check-timing
+  # loop; a grace period avoids ECS ever fighting a legitimately slow
+  # (not crashed) boot the way ecs_directus hit live.
+  health_check_grace_period_seconds = 180
+
   environment_variables = {
     # medusa-config.ts assembles DATABASE_URL from PGHOST/PGPORT/PGUSER/
     # PGDATABASE + the PGPASSWORD secret below — see its own comment

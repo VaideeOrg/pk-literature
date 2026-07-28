@@ -164,6 +164,8 @@ resource "aws_ecs_service" "this" {
     container_port   = var.container_port
   }
 
+  health_check_grace_period_seconds = var.health_check_grace_period_seconds
+
   # Directus needs its own DB migrations to finish before a second task
   # would come up healthy anyway; keep deploys simple (recreate) rather
   # than blue/green for this single-task admin surface.

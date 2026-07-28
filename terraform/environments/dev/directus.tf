@@ -76,6 +76,16 @@ module "ecs_directus" {
   security_group_ids = [module.security_groups.ecs_directus_sg_id]
   target_group_arn   = module.alb_directus.target_group_arn
 
+  # Directus's official image runs its full migration/bootstrap sequence
+  # on every container start (not just this repo's own DB migrations -
+  # the built-in ~80 schema migrations, admin-user check, etc. all run
+  # again each boot, idempotently but not instantly). Without a grace
+  # period ECS starts acting on the ALB's failing health checks
+  # immediately, kills the task mid-boot, and loops forever between
+  # PROVISIONING/DEACTIVATING without ever converging - a real failure
+  # mode hit live (runningCount stuck at 0, ELB health check failures).
+  health_check_grace_period_seconds = 180
+
   environment_variables = {
     DB_CLIENT = "pg"
     # Pointed at RDS directly, bypassing RDS Proxy — testing whether

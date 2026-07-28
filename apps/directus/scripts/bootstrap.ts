@@ -47,7 +47,15 @@ const ADMIN_EMAIL = requireEnv('DIRECTUS_ADMIN_EMAIL');
 const ADMIN_PASSWORD = requireEnv('DIRECTUS_ADMIN_PASSWORD');
 
 function buildClient() {
-	return createDirectus(DIRECTUS_URL).with(rest()).with(authentication());
+	// 'json' mode, not the default 'cookie' mode: the SDK's cookie mode
+	// relies on the environment's automatic cookie jar (a browser's),
+	// which a plain Node script doesn't have - login() would succeed
+	// and set a cookie this process immediately discards, then every
+	// subsequent authenticated request goes out with no token attached
+	// at all, failing 403 as if anonymous. 'json' keeps the access
+	// token in memory and attaches it as a Bearer header instead - a
+	// real, live-confirmed failure mode, not a hypothetical one.
+	return createDirectus(DIRECTUS_URL).with(rest()).with(authentication('json'));
 }
 
 type Client = ReturnType<typeof buildClient>;

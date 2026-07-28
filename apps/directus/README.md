@@ -30,9 +30,10 @@ extension and the config-as-code bootstrap script in this directory.
   `staging` Postgres tables as Directus collections
   (`plan/contracts/directus/collections.md`) and creates the Catalog
   Editor / Senior Editor roles + policies + permissions from SPEC-03.
-  Run with `DIRECTUS_URL`, `DIRECTUS_ADMIN_EMAIL`,
-  `DIRECTUS_ADMIN_PASSWORD` set: `pnpm --filter directus run bootstrap`.
-  Idempotent — safe to re-run.
+  Run with `DIRECTUS_URL` set, plus either `DIRECTUS_TOKEN` (a static
+  access token from an existing admin's user profile — preferred) or
+  both `DIRECTUS_ADMIN_EMAIL`/`DIRECTUS_ADMIN_PASSWORD`:
+  `pnpm --filter directus run bootstrap`. Idempotent — safe to re-run.
 
 ## Known issue — bootstrap not live-verified
 

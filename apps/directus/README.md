@@ -102,6 +102,51 @@ between major versions, so the "Trigger catalog publish event" Flow
 operation needs re-verifying (or the extension's own API usage
 revisited) once 12.1.1 is confirmed to actually boot.
 
+**Root cause confirmed**: a third theory was tried live against 12.1.1
+— connecting Directus directly to RDS instead of through RDS Proxy
+(`terraform/modules/security-groups/main.tf`'s `ecs_directus_to_rds`,
+`directus.tf`'s `DB_HOST`), on the hypothesis that RDS Proxy's
+connection multiplexing might be routing Directus's own bootstrap
+queries to different physical backends mid-sequence. With a genuinely
+fresh `directus` schema (migration
+`20260101000014_reset_directus_schema_for_rds_direct.sql`) and TLS
+actually working (`DB_SSL__CA_FILE`, not `DB_SSL__CA` — see that
+migration's own history), Directus got dramatically further than any
+previous attempt: it installed its system tables and applied ~80 of its
+own built-in schema migrations, then crashed at the *same*
+`20251014A-add-project-owner` migration 11.17.4 hit months earlier
+**through RDS Proxy** — ruling out RDS Proxy as the cause, since the
+identical failure now reproduced with RDS Proxy completely out of the
+connection path.
+
+The actual error this time was more specific:
+`TypeError: Cannot read properties of undefined (reading 'primary')`,
+inside `getAllowedSort` → `getAstFromQuery` → `RelationsService.readAll`
+→ `getDatabaseSchema` → `getSchema()`, called mid-migration. Research
+against Directus's own source and issue tracker confirmed this is a
+known, documented limitation: `getDatabaseSchema()` builds its
+`collections` map purely from `@directus/schema`'s physical-table
+introspection, which has a long-standing gap with non-`public` Postgres
+schemas (directus/directus discussion #12057: "Directus performs schema
+introspection using only the explicitly set search path"; issues #3228
+and #24592 show the same "collection missing from introspected schema"
+symptom). This repo ran Directus's own tables in a dedicated `directus`
+schema (`naming.md`'s schema-per-domain convention, migration
+`20260101000006_directus_app_role.sql`) — even with `public` added to
+the search_path as a fallback (migration `20260101000012`), Directus's
+own introspection code doesn't reliably see its tables outside
+`public`. There is no official override (unlike Medusa's explicit
+`databaseSchema` config key, `medusa-config.ts`) — Directus maintainers'
+documented position is to not run its own tables outside `public`.
+
+**Fix**: migration `20260101000015_directus_use_public_schema.sql`
+moves `directus_app` to the `public` schema entirely (unused by every
+other service in this repo — verified by grepping every
+`apps/*/migrations/*.sql`) and drops the now-unused `directus` schema.
+No Terraform/Dockerfile change needed — this is purely a DB-role-level
+fix. Still needs a live re-test to confirm it actually resolves the
+crash.
+
 Practical consequence: `scripts/bootstrap.ts` and the collection/role/
 permission design in this README are written carefully against
 Directus's documented API and typechecked against the real
@@ -110,14 +155,10 @@ Directus's documented API and typechecked against the real
 bootstrap script nor the `eventbridge-put-event` extension's runtime
 behavior have been round-tripped against an actual running Directus.
 Treat both as reviewed-but-untested. Before relying on this in a real
-environment: confirm the ECS task boots cleanly on 12.1.1 (if it
-doesn't either, this needs root-causing against Directus's own issue
-tracker — or reconsidering a bespoke editorial admin app instead of
-self-hosted Directus, given three different versions have now hit the
-same class of bootstrap bug — rather than another version guess), then
-run the bootstrap script and manually verify a Catalog Editor and
-Senior Editor account behave as SPEC-03 describes before treating
-either role as trustworthy.
+environment: confirm the ECS task boots cleanly now that Directus owns
+the `public` schema, then run the bootstrap script and manually verify
+a Catalog Editor and Senior Editor account behave as SPEC-03 describes
+before treating either role as trustworthy.
 
 ## Deliberately out of scope for this pass
 

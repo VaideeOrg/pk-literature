@@ -32,7 +32,7 @@ variable "directus_image_tag" {
 }
 
 variable "medusa_image_tag" {
-  description = "Tag built into pk-literature/medusa by .github/workflows/build-medusa-image.yml. Historically matched the @medusajs/* version pinned in apps/medusa/package.json, but ECR tags are IMMUTABLE (terraform/bootstrap/ecr.tf) and this image also bakes in our own apps/medusa source (medusa-config.ts, src/subscribers, Dockerfile) — a fix to our own code (e.g. medusa-config.ts TLS driver options) needs a new tag to actually roll out even when the upstream Medusa version has not changed, or build-medusa-image.yml just silently skips the push (tag already exists) and the old image keeps running. The -1 suffix marks our own build revision 1 of Medusa 2.17.2."
+  description = "Tag built into pk-literature/medusa by .github/workflows/build-medusa-image.yml. Historically matched the @medusajs/* version pinned in apps/medusa/package.json, but ECR tags are IMMUTABLE (terraform/bootstrap/ecr.tf) and this image also bakes in our own apps/medusa source (medusa-config.ts, src/subscribers, Dockerfile) — a fix to our own code (e.g. medusa-config.ts TLS driver options, or the Dockerfile's own CMD) needs a new tag to actually roll out even when the upstream Medusa version has not changed, or build-medusa-image.yml just silently skips the push (tag already exists) and the old image keeps running. The -2 suffix marks build revision 2 of Medusa 2.17.2: the Dockerfile's CMD now runs `medusa db:migrate` before `medusa start` - the live first-boot attempt crashed on every Medusa module (Tax, Payment, Fulfillment, Notification, ...) with 'relation medusa.<table> does not exist' because Medusa's own tables were never created (20260401000004_medusa_app_role.sql only creates the medusa schema/role, deliberately leaving Medusa's own module tables to Medusa's own migration CLI)."
   type        = string
-  default     = "2.17.2-1"
+  default     = "2.17.2-2"
 }

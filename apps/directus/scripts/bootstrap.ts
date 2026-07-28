@@ -14,14 +14,28 @@
  * creates what's missing, so this is safe to re-run (CI or manually)
  * after any partial failure.
  *
- * Run with DIRECTUS_URL / DIRECTUS_ADMIN_EMAIL / DIRECTUS_ADMIN_PASSWORD
- * set — see ../README.md.
+ * Run with DIRECTUS_URL set, plus either DIRECTUS_TOKEN (a static access
+ * token from an existing admin's user profile - preferred, see
+ * ../README.md) or DIRECTUS_ADMIN_EMAIL + DIRECTUS_ADMIN_PASSWORD.
+ *
+ * DIRECTUS_TOKEN is preferred over email/password login: this repo hit
+ * a real, live case where ADMIN_EMAIL/ADMIN_PASSWORD (the env vars
+ * Directus's own container bootstrap uses) ended up not matching any
+ * working admin account after repeated ECS task restarts during an
+ * earlier health-check misconfiguration - each restart re-ran
+ * Directus's own bootstrap, and at least one attempt appears to have
+ * created a second "Administrator" role/user pairing distinct from the
+ * one actually logged into in the browser. A static token sidesteps
+ * all of that ambiguity: it's tied to the specific, already-verified-
+ * working admin account, not to whichever credentials happen to match
+ * at the time this script runs.
  */
 
 import {
 	createDirectus,
 	rest,
 	authentication,
+	staticToken,
 	readCollections,
 	createCollection,
 	readRoles,
@@ -43,10 +57,19 @@ function requireEnv(name: string): string {
 }
 
 const DIRECTUS_URL = requireEnv('DIRECTUS_URL');
-const ADMIN_EMAIL = requireEnv('DIRECTUS_ADMIN_EMAIL');
-const ADMIN_PASSWORD = requireEnv('DIRECTUS_ADMIN_PASSWORD');
+const TOKEN = process.env.DIRECTUS_TOKEN;
+const ADMIN_EMAIL = process.env.DIRECTUS_ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.DIRECTUS_ADMIN_PASSWORD;
 
-function buildClient() {
+if (!TOKEN && !(ADMIN_EMAIL && ADMIN_PASSWORD)) {
+	throw new Error('Set DIRECTUS_TOKEN, or both DIRECTUS_ADMIN_EMAIL and DIRECTUS_ADMIN_PASSWORD.');
+}
+
+function buildTokenClient(token: string) {
+	return createDirectus(DIRECTUS_URL).with(rest()).with(staticToken(token));
+}
+
+function buildLoginClient() {
 	// 'json' mode, not the default 'cookie' mode: the SDK's cookie mode
 	// relies on the environment's automatic cookie jar (a browser's),
 	// which a plain Node script doesn't have - login() would succeed
@@ -56,6 +79,10 @@ function buildClient() {
 	// token in memory and attaches it as a Bearer header instead - a
 	// real, live-confirmed failure mode, not a hypothetical one.
 	return createDirectus(DIRECTUS_URL).with(rest()).with(authentication('json'));
+}
+
+function buildClient() {
+	return TOKEN ? buildTokenClient(TOKEN) : buildLoginClient();
 }
 
 type Client = ReturnType<typeof buildClient>;
@@ -97,8 +124,14 @@ const ALL_COLLECTIONS = [...CATALOG_COLLECTIONS, ...STAGING_COLLECTIONS];
 const STATUS_GATED_COLLECTIONS = ['works', 'books', 'collections'];
 
 async function main() {
-	const client = buildClient();
-	await client.login(ADMIN_EMAIL, ADMIN_PASSWORD);
+	let client: Client;
+	if (TOKEN) {
+		client = buildTokenClient(TOKEN);
+	} else {
+		const loginClient = buildLoginClient();
+		await loginClient.login(ADMIN_EMAIL as string, ADMIN_PASSWORD as string);
+		client = loginClient;
+	}
 
 	await ensureCollectionsTracked(client);
 	const catalogEditorPolicyId = await ensureCatalogEditorPolicy(client);

@@ -1,16 +1,13 @@
 -- Up Migration
--- Recurrence of the exact issue 20260101000018 fixed. Root cause
--- finally understood: Directus's own container-startup bootstrap
--- (`node cli.js bootstrap`, baked into the image's default CMD) runs
--- on every single container boot, and per 20260101000016's own
--- header comment, has a documented history of re-touching this
--- account's role assignment on restart. A force-new-deployment done
--- live to pick up enable_execute_command (see the ECS Exec Terraform
--- change) triggered exactly that: the account's role silently
--- flipped from the "Full Administrator (restored)" role
--- 20260101000016 pointed it at back to Directus's own default
--- "Administrator" role - a role never covered by the ip_access fix
--- before, because it didn't exist as this account's role at the time.
+-- Recurrence of the exact issue 20260101000018 fixed. Root cause: the
+-- "Full Administrator (restored)" role 20260101000016 created and
+-- pointed this account at was manually deleted via the admin UI
+-- during this same live debugging session. Deleting a role a user is
+-- currently assigned to forces Directus to reassign that user
+-- somewhere - in this case, back to Directus's own default
+-- "Administrator" role, which was never covered by the earlier
+-- ip_access fix because it wasn't this account's role at the time
+-- that fix was written.
 --
 -- Confirmed live via a raw query run directly inside the container
 -- against this same database (through ECS Exec, bypassing the API

@@ -1,32 +1,27 @@
 -- Up Migration
--- Diagnostic only, deliberately fails so it surfaces in
--- migration-runner's own invoke response (its stdout doesn't reach us
--- otherwise) and never gets marked as applied - safe to re-run.
--- 20260101000016's fix isn't taking effect (GET /users/me still
--- returns only `id` for this user, even after a forced ECS
--- redeployment ruled out stale in-memory cache) - need to see the
--- actual current DB state rather than guess again.
-DO $$
-DECLARE
-  v_report text;
-BEGIN
-  SELECT format(
-    'user.role=%s | role.name=%s | policy_count=%s | policies=%s',
-    u.role,
-    r.name,
-    (SELECT count(*) FROM directus_access a WHERE a.role = u.role OR a.user = u.id),
-    (SELECT string_agg(format('%s(admin=%s)', p.name, p.admin_access), ', ')
-     FROM directus_access a
-     JOIN directus_policies p ON p.id = a.policy
-     WHERE a.role = u.role OR a.user = u.id)
-  ) INTO v_report
-  FROM directus_users u
-  LEFT JOIN directus_roles r ON r.id = u.role
-  WHERE u.id = 'de520ea8-b27a-4e49-a26a-62ed31899d98';
-
-  RAISE EXCEPTION 'DIAGNOSTIC: %', v_report;
-END
-$$;
+-- Was originally diagnostic-only and designed to always fail (RAISE
+-- EXCEPTION), so its output would surface in migration-runner's own
+-- invoke response - it did its job (found the account's role/policies
+-- were actually correct, which pointed the real investigation at the
+-- IP-allowlist issue migration 20260101000018 fixes). Left permanently
+-- failing, it blocks every migration numbered after it from ever
+-- running (node-pg-migrate processes migrations in order and stops on
+-- the first error) - a real, live-hit oversight: 20260101000018
+-- couldn't run at all until this was neutralized. Turned into a no-op
+-- so migrations can proceed past it; the diagnostic query and its
+-- findings are preserved in the down migration's comment purely as a
+-- record, not executed.
+SELECT 1;
 
 -- Down Migration
--- N/A - this migration is designed to always fail and never apply.
+-- No-op - see up migration's comment. The diagnostic query this
+-- migration used to run (for reference only, not executed):
+--   SELECT u.role, r.name, count(*), string_agg(...)
+--   FROM directus_users u ...
+--   WHERE u.id = 'de520ea8-b27a-4e49-a26a-62ed31899d98'
+-- Findings at the time: role=Full Administrator (restored), 3
+-- policies attached (Administrator, $t:public_label, Full
+-- Administrator (restored)), all admin_access=true - confirming the
+-- account's role/policy assignment was already correct, which is what
+-- pointed the investigation at IP allowlisting instead.
+SELECT 1;

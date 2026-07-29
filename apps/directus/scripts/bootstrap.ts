@@ -254,17 +254,22 @@ async function ensureRoleWithPolicy(client: Client, name: string, policyId: stri
 		console.log(`role ${name}: created`);
 	}
 
-	// directus_access has no dedicated SDK composable, and @directus/sdk
-	// 17.x's generic readItems/createItem now hard-reject core system
-	// collections client-side (throwIfCoreCollection, added since this
-	// script was first written - confirmed live: "Cannot use readItems
-	// for core collections"). The server itself still exposes
-	// directus_access at the normal /items/directus_access REST path;
-	// customEndpoint() is the SDK's documented raw escape hatch that
-	// isn't subject to that same client-side guard.
+	// directus_access has no dedicated SDK composable, so this uses
+	// customEndpoint() (the SDK's raw-request escape hatch) directly
+	// against its own dedicated /access route (controllers/access.js -
+	// AccessService, mounted via middleware/use-collection.js), NOT
+	// /items/directus_access. Verified live against the deployed
+	// controllers/items.js: it unconditionally throws ForbiddenError
+	// for ANY system collection routed through the generic
+	// /items/:collection path (`isSystemCollection(...) =>
+	// ForbiddenError`), independent of admin status entirely - that's
+	// deliberate Directus hardening (system tables are only meant to be
+	// reached via their own dedicated controllers), not a permissions
+	// bug. Every directus_* table has an equivalent dedicated
+	// controller/route for exactly this reason.
 	const existingAccess = await client.request(
 		customEndpoint<{ id: number }[]>({
-			path: '/items/directus_access',
+			path: '/access',
 			method: 'GET',
 			params: { filter: { role: { _eq: roleId }, policy: { _eq: policyId } } },
 		}),
@@ -272,7 +277,7 @@ async function ensureRoleWithPolicy(client: Client, name: string, policyId: stri
 	if (existingAccess.length === 0) {
 		await client.request(
 			customEndpoint({
-				path: '/items/directus_access',
+				path: '/access',
 				method: 'POST',
 				body: JSON.stringify({ role: roleId, policy: policyId }),
 				headers: { 'Content-Type': 'application/json' },

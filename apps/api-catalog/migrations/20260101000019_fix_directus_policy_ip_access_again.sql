@@ -1,0 +1,42 @@
+-- Up Migration
+-- Recurrence of the exact issue 20260101000018 fixed. Root cause: the
+-- "Full Administrator (restored)" role 20260101000016 created and
+-- pointed this account at was manually deleted via the admin UI
+-- during this same live debugging session. Deleting a role a user is
+-- currently assigned to forces Directus to reassign that user
+-- somewhere - in this case, back to Directus's own default
+-- "Administrator" role, which was never covered by the earlier
+-- ip_access fix because it wasn't this account's role at the time
+-- that fix was written.
+--
+-- That "Administrator" policy's ip_access = '0.0.0.0/0' was also a
+-- manual UI action, separate from the role deletion above - set by
+-- hand in the IP Access field with the (reasonable, standard-CIDR)
+-- intent of allowing every address. Directus's own
+-- fetch-global-access-for-query.ts doesn't treat that as equivalent to
+-- "unrestricted" though: `if (accountability.ip && ip_access)` runs
+-- its network-match check against ANY non-null ip_access value, and
+-- that match is failing here for a reason not fully pinned down
+-- (possibly IPv6-mapped-address handling, possibly something else).
+-- NULL is the only value confirmed reliable (twice now) at skipping
+-- that check outright - leave the UI's IP Access field blank, not
+-- "0.0.0.0/0", for "no restriction" going forward.
+--
+-- Same query as 20260101000018, deliberately not hardcoded to a
+-- specific policy ID - it looks up the user's CURRENT role dynamically
+-- via subquery, so it catches whichever role/policies are actually
+-- attached right now, including this new one.
+UPDATE directus_policies
+SET ip_access = NULL
+WHERE id IN (
+  SELECT DISTINCT p.id
+  FROM directus_access a
+  JOIN directus_policies p ON p.id = a.policy
+  WHERE a.role = (SELECT role FROM directus_users WHERE id = 'de520ea8-b27a-4e49-a26a-62ed31899d98')
+     OR a.user = 'de520ea8-b27a-4e49-a26a-62ed31899d98'
+);
+
+-- Down Migration
+-- Deliberately a no-op - reverting this would reintroduce the exact
+-- access gap this migration exists to fix, same reasoning as
+-- 20260101000018's down migration.

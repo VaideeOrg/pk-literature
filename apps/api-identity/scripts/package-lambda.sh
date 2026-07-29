@@ -19,8 +19,17 @@ echo "==> Resolving a self-contained package (pnpm deploy --prod)"
 rm -rf "$STAGING_DIR"
 (cd "$ROOT_DIR" && pnpm --filter api-identity deploy --prod "$STAGING_DIR")
 
+echo "==> Normalizing file timestamps for a reproducible archive"
+# See apps/api-catalog/scripts/package-lambda.sh's matching comment —
+# without this, source_code_hash changes on every build regardless of
+# actual code changes, publishing a spurious new Lambda version on
+# every terraform apply and eventually breaking `terraform plan`/`apply`
+# outright once accumulated versions blow past the AWS SDK's response
+# decoder limit.
+find "$STAGING_DIR" -exec touch -h -t 198001010000.00 {} +
+
 echo "==> Zipping"
 rm -f "$ZIP_PATH"
-(cd "$STAGING_DIR" && zip -rqy "$ZIP_PATH" . -x "*.git*")
+(cd "$STAGING_DIR" && zip -rqyX "$ZIP_PATH" . -x "*.git*")
 
 echo "==> Done: $ZIP_PATH ($(du -h "$ZIP_PATH" | cut -f1))"

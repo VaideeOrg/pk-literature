@@ -35,6 +35,27 @@ echo "==> Resolving a self-contained package (pnpm deploy --prod)"
 rm -rf "$STAGING_DIR"
 (cd "$ROOT_DIR" && pnpm --filter api-catalog deploy --prod "$STAGING_DIR")
 
+echo "==> Normalizing file timestamps for a reproducible archive"
+# `pnpm deploy` writes every file with its own fresh mtime on every
+# run, even when the file's content is byte-for-byte identical to the
+# last build — zip embeds those mtimes, so source_code_hash (computed
+# over the zip's own bytes, see the .tf file's filebase64sha256() call)
+# changed on literally every build regardless of whether this app's
+# code actually changed. With `publish = true` on the Lambda resource
+# (terraform/modules/lambda-service/main.tf), that meant a spurious new
+# published version on every single terraform apply — including
+# infra-only applies that never touched this app at all, since
+# terraform-apply.yml rebuilds every service's package unconditionally.
+# Confirmed live: every function had ~50 accumulated versions, and
+# AWS's own ListVersionsByFunction response for that many versions blew
+# past the AWS SDK's decoder buffer limit ("bufio.Scanner: token too
+# long"), breaking `terraform plan`/`apply` outright. -h/--no-dereference
+# touches symlinks themselves, not their (in-archive) targets. 1980-01-01
+# is the earliest date the classic zip/DOS timestamp format can
+# represent — Unix epoch (1970) gets silently clamped/warned about by
+# zip instead.
+find "$STAGING_DIR" -exec touch -h -t 198001010000.00 {} +
+
 echo "==> Zipping"
 rm -f "$ZIP_PATH"
 # -y: store symlinks as symlinks, do NOT dereference them. pnpm's
@@ -45,6 +66,9 @@ rm -f "$ZIP_PATH"
 # preserves the symlinks themselves (~15MB), and Lambda's extraction —
 # a normal filesystem unzip — resolves them correctly at cold start
 # since every symlink target lives inside the same archive.
-(cd "$STAGING_DIR" && zip -rqy "$ZIP_PATH" . -x "*.git*")
+# -X: strip UID/GID and other extra-field metadata from each entry —
+# the remaining piece of the archive's bytes that could otherwise vary
+# between build environments/runners independently of file content.
+(cd "$STAGING_DIR" && zip -rqyX "$ZIP_PATH" . -x "*.git*")
 
 echo "==> Done: $ZIP_PATH ($(du -h "$ZIP_PATH" | cut -f1))"

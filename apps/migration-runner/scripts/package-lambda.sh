@@ -50,8 +50,19 @@ done
 echo "==> Downloading RDS CA bundle"
 curl -fsSL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem -o "$STAGING_DIR/rds-ca-bundle.pem"
 
+echo "==> Normalizing file timestamps for a reproducible archive"
+# See apps/api-catalog/scripts/package-lambda.sh's matching comment —
+# without this, source_code_hash changes on every build regardless of
+# actual code changes, publishing a spurious new Lambda version on
+# every terraform apply and eventually breaking `terraform plan`/`apply`
+# outright once accumulated versions blow past the AWS SDK's response
+# decoder limit. Run after the migrations/ copy and CA bundle download
+# above so those files' timestamps get normalized too, not just
+# pnpm deploy's own output.
+find "$STAGING_DIR" -exec touch -h -t 198001010000.00 {} +
+
 echo "==> Zipping"
 rm -f "$ZIP_PATH"
-(cd "$STAGING_DIR" && zip -rqy "$ZIP_PATH" . -x "*.git*")
+(cd "$STAGING_DIR" && zip -rqyX "$ZIP_PATH" . -x "*.git*")
 
 echo "==> Done: $ZIP_PATH ($(du -h "$ZIP_PATH" | cut -f1))"

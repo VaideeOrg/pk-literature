@@ -163,10 +163,19 @@ async function ensureCollectionsTracked(client: Client) {
 			continue;
 		}
 
-		// Table already exists in Postgres (migrations own the DDL) — an
-		// empty `fields` array tells Directus to introspect the existing
-		// table rather than create a new one.
-		await client.request(createCollection({ collection, fields: [] }));
+		// Table already exists in Postgres (migrations own the DDL).
+		// Omitting `schema` skips CollectionsService.createOne()'s
+		// CREATE TABLE branch entirely (it's gated on `payload.schema`
+		// being present) - Directus 12.1.1 has no separate
+		// "introspect an existing table" mode keyed off an empty
+		// `fields` array despite what an earlier version of this
+		// comment assumed (verified live against the deployed
+		// dist/services/collections.js: `fields` isn't even a
+		// DirectusCollection SDK type field). `meta` must be present
+		// instead - that's what triggers the directus_collections
+		// tracking-row insert, the only thing that actually registers
+		// the collection.
+		await client.request(createCollection({ collection, meta: {} }));
 		console.log(`collection ${collection}: tracked`);
 	}
 }

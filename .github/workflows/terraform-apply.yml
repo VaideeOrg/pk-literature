@@ -192,25 +192,56 @@ jobs:
           # underlying issue.
           terraform apply -input=false -auto-approve -parallelism=1
       - name: Sync OpenNext static assets to S3
+        id: sync-assets
         working-directory: terraform/environments/prod
         run: |
           BUCKET=$(terraform output -raw web_static_assets_bucket_id)
           ASSETS_DIR="../../../apps/web/.open-next/assets"
+          CHANGED=0
           # _next/static/* is content-hashed by Next.js itself (a build
           # producing different output gets a different filename), so it's
           # safe to cache forever — everything else (the copied public/
           # directory, plus any non-hashed _next output) isn't, and should
           # revalidate on every request instead.
-          aws s3 sync "$ASSETS_DIR" "s3://$BUCKET" \
+          #
+          # --size-only: open-next build regenerates every file fresh on
+          # each run, so even byte-identical output gets a new local
+          # mtime — the default sync comparison (size + mtime) would
+          # re-upload every file on every single deploy regardless of
+          # actual content change, the same root cause
+          # package-lambda.sh's reproducible-zip fix addressed for
+          # Lambda. Comparing by size alone avoids the equivalent waste
+          # here (accepting the standard tradeoff: a same-size content
+          # change on the exact same key wouldn't be caught by sync —
+          # not a real risk for Next.js's content-hashed build output).
+          SYNC_OUTPUT=$(aws s3 sync "$ASSETS_DIR" "s3://$BUCKET" \
             --delete \
+            --size-only \
             --exclude "_next/static/*" \
-            --cache-control "public,max-age=0,must-revalidate"
-          if [ -d "$ASSETS_DIR/_next/static" ]; then
-            aws s3 sync "$ASSETS_DIR/_next/static" "s3://$BUCKET/_next/static" \
-              --delete \
-              --cache-control "public,max-age=31536000,immutable"
+            --cache-control "public,max-age=0,must-revalidate")
+          echo "$SYNC_OUTPUT"
+          if [ -n "$SYNC_OUTPUT" ]; then
+            CHANGED=1
           fi
+          if [ -d "$ASSETS_DIR/_next/static" ]; then
+            SYNC_OUTPUT_STATIC=$(aws s3 sync "$ASSETS_DIR/_next/static" "s3://$BUCKET/_next/static" \
+              --delete \
+              --size-only \
+              --cache-control "public,max-age=31536000,immutable")
+            echo "$SYNC_OUTPUT_STATIC"
+            if [ -n "$SYNC_OUTPUT_STATIC" ]; then
+              CHANGED=1
+            fi
+          fi
+          echo "changed=$CHANGED" >> "$GITHUB_OUTPUT"
       - name: Invalidate apps/web CloudFront distribution
+        # Skips the invalidation entirely when the sync above uploaded
+        # or deleted nothing — the previous unconditional `/*`
+        # invalidation ran (and cost money beyond AWS's 1,000
+        # free paths/month, plus propagation delay) on every single
+        # apply, including purely-infra ones that never touched
+        # apps/web at all.
+        if: steps.sync-assets.outputs.changed == '1'
         working-directory: terraform/environments/prod
         run: |
           DIST_ID=$(terraform output -raw web_distribution_id)

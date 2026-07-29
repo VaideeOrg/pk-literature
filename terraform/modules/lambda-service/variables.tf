@@ -8,12 +8,17 @@ variable "service_name" {
 }
 
 variable "filename" {
-  description = "Path to the deployment package zip, built by that service's scripts/package-lambda.sh."
+  description = "Path to the deployment package zip, built by that service's scripts/package-lambda.sh. Uploaded to var.artifact_bucket and referenced there — never passed to aws_lambda_function directly (see main.tf's aws_s3_object.code comment)."
   type        = string
 }
 
 variable "source_code_hash" {
   type = string
+}
+
+variable "artifact_bucket" {
+  description = "S3 bucket this Lambda's deployment package gets uploaded to before aws_lambda_function references it via s3_bucket/s3_key — see environments/<env>/main.tf's module.lambda_artifacts. Direct/inline filename upload on aws_lambda_function hit a hard provider/SDK limit on large zips (bufio.Scanner: token too long during UpdateFunctionCode); S3-mediated deployment avoids ever embedding the whole zip in that API request."
+  type        = string
 }
 
 variable "handler" {

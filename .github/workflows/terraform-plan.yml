@@ -41,28 +41,124 @@ jobs:
           node-version: "20"
           cache: "pnpm"
       - run: pnpm install --frozen-lockfile
+
+      # Each service's build previously ran unconditionally on every
+      # single invocation, regardless of whether its own source (or the
+      # shared packages it depends on) actually changed — real CI time
+      # wasted on identical rebuilds for infra-only PRs that never
+      # touched any app code. actions/cache keys on a hash of exactly
+      # the inputs that affect that service's build output (its own
+      # src/package.json/tsconfig, the workspace packages it imports
+      # from, packages/tsconfig's shared base config, and the lockfile)
+      # — an exact key match means the source is provably identical to
+      # a previous successful build, so the cached zip is restored and
+      # the build step skipped entirely (gated by cache-hit below);
+      # anything else runs the build fresh, same as before, and caches
+      # the new result under its new key.
+      - name: Cache api-catalog Lambda package
+        id: cache-api-catalog
+        uses: actions/cache@v4
+        with:
+          path: apps/api-catalog/dist-lambda.zip
+          key: api-catalog-lambda-${{ hashFiles('apps/api-catalog/src/**', 'apps/api-catalog/package.json', 'apps/api-catalog/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
       - name: Build api-catalog Lambda package
+        if: steps.cache-api-catalog.outputs.cache-hit != 'true'
         run: bash scripts/package-lambda.sh
         working-directory: apps/api-catalog
+
+      - name: Cache api-publisher-import Lambda package
+        id: cache-api-publisher-import
+        uses: actions/cache@v4
+        with:
+          path: apps/api-publisher-import/dist-lambda.zip
+          key: api-publisher-import-lambda-${{ hashFiles('apps/api-publisher-import/src/**', 'apps/api-publisher-import/package.json', 'apps/api-publisher-import/tsconfig*.json', 'packages/adapter-sdk/src/**', 'packages/adapter-sdk/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
       - name: Build api-publisher-import Lambda package
+        if: steps.cache-api-publisher-import.outputs.cache-hit != 'true'
         run: bash scripts/package-lambda.sh
         working-directory: apps/api-publisher-import
+
+      - name: Cache api-feed Lambda package
+        id: cache-api-feed
+        uses: actions/cache@v4
+        with:
+          path: apps/api-feed/dist-lambda.zip
+          key: api-feed-lambda-${{ hashFiles('apps/api-feed/src/**', 'apps/api-feed/package.json', 'apps/api-feed/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
       - name: Build api-feed Lambda package
+        if: steps.cache-api-feed.outputs.cache-hit != 'true'
         run: bash scripts/package-lambda.sh
         working-directory: apps/api-feed
+
+      - name: Cache api-search Lambda package
+        id: cache-api-search
+        uses: actions/cache@v4
+        with:
+          path: apps/api-search/dist-lambda.zip
+          key: api-search-lambda-${{ hashFiles('apps/api-search/src/**', 'apps/api-search/package.json', 'apps/api-search/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
       - name: Build api-search Lambda package
+        if: steps.cache-api-search.outputs.cache-hit != 'true'
         run: bash scripts/package-lambda.sh
         working-directory: apps/api-search
+
+      - name: Cache api-commerce Lambda package
+        id: cache-api-commerce
+        uses: actions/cache@v4
+        with:
+          path: apps/api-commerce/dist-lambda.zip
+          key: api-commerce-lambda-${{ hashFiles('apps/api-commerce/src/**', 'apps/api-commerce/package.json', 'apps/api-commerce/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
       - name: Build api-commerce Lambda package
+        if: steps.cache-api-commerce.outputs.cache-hit != 'true'
         run: bash scripts/package-lambda.sh
         working-directory: apps/api-commerce
+
+      - name: Cache api-identity Lambda package
+        id: cache-api-identity
+        uses: actions/cache@v4
+        with:
+          path: apps/api-identity/dist-lambda.zip
+          key: api-identity-lambda-${{ hashFiles('apps/api-identity/src/**', 'apps/api-identity/package.json', 'apps/api-identity/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
       - name: Build api-identity Lambda package
+        if: steps.cache-api-identity.outputs.cache-hit != 'true'
         run: bash scripts/package-lambda.sh
         working-directory: apps/api-identity
+
+      # Also keyed on the 5 services' migrations/ directories, not just
+      # migration-runner's own source — package-lambda.sh copies those
+      # SQL files into the deployment package directly (see that
+      # script's own header comment), so a migration added to any of
+      # them needs a rebuild here too even if migration-runner's own
+      # code didn't change. One caveat accepted for this one: a
+      # cache-hit skips re-downloading the RDS CA bundle
+      # (curl'd fresh in package-lambda.sh), so a cached build keeps
+      # whichever bundle was embedded at cache-creation time — fine in
+      # practice since AWS rotates that bundle on a multi-year cycle
+      # with advance notice, not something that needs a same-day CI
+      # rebuild to pick up.
+      - name: Cache migration-runner Lambda package
+        id: cache-migration-runner
+        uses: actions/cache@v4
+        with:
+          path: apps/migration-runner/dist-lambda.zip
+          key: migration-runner-lambda-${{ hashFiles('apps/migration-runner/src/**', 'apps/migration-runner/package.json', 'apps/migration-runner/tsconfig*.json', 'apps/api-catalog/migrations/**', 'apps/api-feed/migrations/**', 'apps/api-search/migrations/**', 'apps/api-commerce/migrations/**', 'apps/api-identity/migrations/**', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
       - name: Build migration-runner Lambda package
+        if: steps.cache-migration-runner.outputs.cache-hit != 'true'
         run: bash scripts/package-lambda.sh
         working-directory: apps/migration-runner
+
+      # Also caches .open-next/assets (not just the two Lambda zips) —
+      # terraform-apply.yml's later "Sync OpenNext static assets to S3"
+      # step needs that directory too, and it's only ever produced by
+      # this same build.
+      - name: Cache apps/web OpenNext packages
+        id: cache-web
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/web/dist-server-lambda.zip
+            apps/web/dist-image-lambda.zip
+            apps/web/.open-next/assets
+          key: web-opennext-${{ hashFiles('apps/web/app/**', 'apps/web/src/**', 'apps/web/middleware.ts', 'apps/web/*.config.*', 'apps/web/package.json', 'apps/web/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/ui/src/**', 'packages/ui/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
       - name: Build apps/web OpenNext packages
+        if: steps.cache-web.outputs.cache-hit != 'true'
         run: bash scripts/package-opennext.sh
         working-directory: apps/web
 

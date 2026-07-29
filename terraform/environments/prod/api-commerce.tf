@@ -59,6 +59,7 @@ module "lambda_api_commerce" {
 
   filename         = local.api_commerce_zip
   source_code_hash = filebase64sha256(local.api_commerce_zip)
+  artifact_bucket  = module.lambda_artifacts.bucket_id
   handler          = "dist/src/lambda.handler"
   runtime          = "nodejs20.x"
   memory_size      = 512
@@ -203,6 +204,7 @@ module "lambda_api_commerce_user_registered_consumer" {
 
   filename         = local.api_commerce_zip
   source_code_hash = filebase64sha256(local.api_commerce_zip)
+  artifact_bucket  = module.lambda_artifacts.bucket_id
   handler          = "dist/src/eventbridge-handler.handler"
   runtime          = "nodejs20.x"
   memory_size      = 256

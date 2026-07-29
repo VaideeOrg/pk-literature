@@ -61,11 +61,36 @@ resource "aws_cloudwatch_log_group" "this" {
   retention_in_days = var.log_retention_days
 }
 
+# Uploaded to S3 rather than passed to aws_lambda_function's own
+# `filename` argument (which base64-encodes the whole zip inline into
+# the UpdateFunctionCode API request body) — that path hit a hard,
+# reproducible provider/SDK failure once these zips grew past a few MB
+# ("decomposing request: bufio.Scanner: token too long"), regardless of
+# whether AWS Lambda's own 50MB direct-upload limit would have accepted
+# the payload; something in the provider's own request encoding chokes
+# on a binary blob that large well before it gets there. Referencing an
+# S3 object instead keeps that API call to a small JSON body — Lambda
+# pulls the actual bytes server-side.
+#
+# Keyed by source_code_hash, not service_name alone: identical source
+# content (same hash, e.g. an infra-only apply that rebuilds this
+# service's zip without changing its code — package-lambda.sh's
+# reproducible-build fix means that hash doesn't change either) reuses
+# the same key rather than re-uploading; a genuinely new build gets its
+# own key rather than overwriting the previous one in place.
+resource "aws_s3_object" "code" {
+  bucket = var.artifact_bucket
+  key    = "${var.service_name}/${var.source_code_hash}.zip"
+  source = var.filename
+  etag   = filemd5(var.filename)
+}
+
 resource "aws_lambda_function" "this" {
   function_name = "pk-literature-${var.environment}-${var.service_name}"
   role          = aws_iam_role.this.arn
 
-  filename         = var.filename
+  s3_bucket        = aws_s3_object.code.bucket
+  s3_key           = aws_s3_object.code.key
   source_code_hash = var.source_code_hash
   handler          = var.handler
   runtime          = var.runtime

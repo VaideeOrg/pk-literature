@@ -2,6 +2,11 @@ variable "environment" {
   type = string
 }
 
+variable "artifact_bucket" {
+  description = "S3 bucket forwarded to both lambda-service module calls below — see that module's matching variable and environments/<env>/main.tf's module.lambda_artifacts."
+  type        = string
+}
+
 variable "server_zip_path" {
   description = "Path to @opennextjs/aws's server-function deployment package, built by apps/web/scripts/package-opennext.sh."
   type        = string

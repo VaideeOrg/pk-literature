@@ -64,30 +64,109 @@ jobs:
           node-version: "20"
           cache: "pnpm"
       - run: pnpm install --frozen-lockfile
+
+      # See terraform-plan.yml's matching comment for the full
+      # rationale — same cache-key-per-service scheme here so a build
+      # already cached by that PR's plan run (identical source tree,
+      # since this fires on the merge commit) skips the rebuild here
+      # too, not just there.
+      - name: Cache api-catalog Lambda package
+        id: cache-api-catalog
+        uses: actions/cache@v4
+        with:
+          path: apps/api-catalog/dist-lambda.zip
+          key: api-catalog-lambda-${{ hashFiles('apps/api-catalog/src/**', 'apps/api-catalog/package.json', 'apps/api-catalog/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
       - name: Build api-catalog Lambda package
+        if: steps.cache-api-catalog.outputs.cache-hit != 'true'
         run: bash scripts/package-lambda.sh
         working-directory: apps/api-catalog
+
+      - name: Cache api-publisher-import Lambda package
+        id: cache-api-publisher-import
+        uses: actions/cache@v4
+        with:
+          path: apps/api-publisher-import/dist-lambda.zip
+          key: api-publisher-import-lambda-${{ hashFiles('apps/api-publisher-import/src/**', 'apps/api-publisher-import/package.json', 'apps/api-publisher-import/tsconfig*.json', 'packages/adapter-sdk/src/**', 'packages/adapter-sdk/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
       - name: Build api-publisher-import Lambda package
+        if: steps.cache-api-publisher-import.outputs.cache-hit != 'true'
         run: bash scripts/package-lambda.sh
         working-directory: apps/api-publisher-import
+
+      - name: Cache api-feed Lambda package
+        id: cache-api-feed
+        uses: actions/cache@v4
+        with:
+          path: apps/api-feed/dist-lambda.zip
+          key: api-feed-lambda-${{ hashFiles('apps/api-feed/src/**', 'apps/api-feed/package.json', 'apps/api-feed/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
       - name: Build api-feed Lambda package
+        if: steps.cache-api-feed.outputs.cache-hit != 'true'
         run: bash scripts/package-lambda.sh
         working-directory: apps/api-feed
+
+      - name: Cache api-search Lambda package
+        id: cache-api-search
+        uses: actions/cache@v4
+        with:
+          path: apps/api-search/dist-lambda.zip
+          key: api-search-lambda-${{ hashFiles('apps/api-search/src/**', 'apps/api-search/package.json', 'apps/api-search/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
       - name: Build api-search Lambda package
+        if: steps.cache-api-search.outputs.cache-hit != 'true'
         run: bash scripts/package-lambda.sh
         working-directory: apps/api-search
+
+      - name: Cache api-commerce Lambda package
+        id: cache-api-commerce
+        uses: actions/cache@v4
+        with:
+          path: apps/api-commerce/dist-lambda.zip
+          key: api-commerce-lambda-${{ hashFiles('apps/api-commerce/src/**', 'apps/api-commerce/package.json', 'apps/api-commerce/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
       - name: Build api-commerce Lambda package
+        if: steps.cache-api-commerce.outputs.cache-hit != 'true'
         run: bash scripts/package-lambda.sh
         working-directory: apps/api-commerce
+
+      - name: Cache api-identity Lambda package
+        id: cache-api-identity
+        uses: actions/cache@v4
+        with:
+          path: apps/api-identity/dist-lambda.zip
+          key: api-identity-lambda-${{ hashFiles('apps/api-identity/src/**', 'apps/api-identity/package.json', 'apps/api-identity/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
       - name: Build api-identity Lambda package
+        if: steps.cache-api-identity.outputs.cache-hit != 'true'
         run: bash scripts/package-lambda.sh
         working-directory: apps/api-identity
+
+      # See terraform-plan.yml's matching comment on the RDS-CA-bundle
+      # staleness tradeoff a cache-hit accepts here.
+      - name: Cache migration-runner Lambda package
+        id: cache-migration-runner
+        uses: actions/cache@v4
+        with:
+          path: apps/migration-runner/dist-lambda.zip
+          key: migration-runner-lambda-${{ hashFiles('apps/migration-runner/src/**', 'apps/migration-runner/package.json', 'apps/migration-runner/tsconfig*.json', 'apps/api-catalog/migrations/**', 'apps/api-feed/migrations/**', 'apps/api-search/migrations/**', 'apps/api-commerce/migrations/**', 'apps/api-identity/migrations/**', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
       - name: Build migration-runner Lambda package
+        if: steps.cache-migration-runner.outputs.cache-hit != 'true'
         run: bash scripts/package-lambda.sh
         working-directory: apps/migration-runner
+
+      # Also caches .open-next/assets, not just the two Lambda zips —
+      # the "Sync OpenNext static assets to S3" step below needs that
+      # directory too, and a skipped build would otherwise leave it
+      # missing.
+      - name: Cache apps/web OpenNext packages
+        id: cache-web
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/web/dist-server-lambda.zip
+            apps/web/dist-image-lambda.zip
+            apps/web/.open-next/assets
+          key: web-opennext-${{ hashFiles('apps/web/app/**', 'apps/web/src/**', 'apps/web/middleware.ts', 'apps/web/*.config.*', 'apps/web/package.json', 'apps/web/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/ui/src/**', 'packages/ui/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
       - name: Build apps/web OpenNext packages
+        if: steps.cache-web.outputs.cache-hit != 'true'
         run: bash scripts/package-opennext.sh
         working-directory: apps/web
+
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.9.8"
@@ -113,25 +192,56 @@ jobs:
           # underlying issue.
           terraform apply -input=false -auto-approve -parallelism=1
       - name: Sync OpenNext static assets to S3
+        id: sync-assets
         working-directory: terraform/environments/prod
         run: |
           BUCKET=$(terraform output -raw web_static_assets_bucket_id)
           ASSETS_DIR="../../../apps/web/.open-next/assets"
+          CHANGED=0
           # _next/static/* is content-hashed by Next.js itself (a build
           # producing different output gets a different filename), so it's
           # safe to cache forever — everything else (the copied public/
           # directory, plus any non-hashed _next output) isn't, and should
           # revalidate on every request instead.
-          aws s3 sync "$ASSETS_DIR" "s3://$BUCKET" \
+          #
+          # --size-only: open-next build regenerates every file fresh on
+          # each run, so even byte-identical output gets a new local
+          # mtime — the default sync comparison (size + mtime) would
+          # re-upload every file on every single deploy regardless of
+          # actual content change, the same root cause
+          # package-lambda.sh's reproducible-zip fix addressed for
+          # Lambda. Comparing by size alone avoids the equivalent waste
+          # here (accepting the standard tradeoff: a same-size content
+          # change on the exact same key wouldn't be caught by sync —
+          # not a real risk for Next.js's content-hashed build output).
+          SYNC_OUTPUT=$(aws s3 sync "$ASSETS_DIR" "s3://$BUCKET" \
             --delete \
+            --size-only \
             --exclude "_next/static/*" \
-            --cache-control "public,max-age=0,must-revalidate"
-          if [ -d "$ASSETS_DIR/_next/static" ]; then
-            aws s3 sync "$ASSETS_DIR/_next/static" "s3://$BUCKET/_next/static" \
-              --delete \
-              --cache-control "public,max-age=31536000,immutable"
+            --cache-control "public,max-age=0,must-revalidate")
+          echo "$SYNC_OUTPUT"
+          if [ -n "$SYNC_OUTPUT" ]; then
+            CHANGED=1
           fi
+          if [ -d "$ASSETS_DIR/_next/static" ]; then
+            SYNC_OUTPUT_STATIC=$(aws s3 sync "$ASSETS_DIR/_next/static" "s3://$BUCKET/_next/static" \
+              --delete \
+              --size-only \
+              --cache-control "public,max-age=31536000,immutable")
+            echo "$SYNC_OUTPUT_STATIC"
+            if [ -n "$SYNC_OUTPUT_STATIC" ]; then
+              CHANGED=1
+            fi
+          fi
+          echo "changed=$CHANGED" >> "$GITHUB_OUTPUT"
       - name: Invalidate apps/web CloudFront distribution
+        # Skips the invalidation entirely when the sync above uploaded
+        # or deleted nothing — the previous unconditional `/*`
+        # invalidation ran (and cost money beyond AWS's 1,000
+        # free paths/month, plus propagation delay) on every single
+        # apply, including purely-infra ones that never touched
+        # apps/web at all.
+        if: steps.sync-assets.outputs.changed == '1'
         working-directory: terraform/environments/prod
         run: |
           DIST_ID=$(terraform output -raw web_distribution_id)

@@ -80,3 +80,9 @@ variable "attach_additional_policy" {
   type        = bool
   default     = false
 }
+
+variable "enable_execute_command" {
+  description = "Enable ECS Exec (aws ecs execute-command) for interactive/diagnostic shell access into a running task. Off by default — it's a debugging capability, not something every service needs. Requires network reachability to the ssmmessages VPC endpoint (or NAT) from wherever the task runs; this module grants the required task-role IAM permissions whenever true, but doesn't provision networking."
+  type        = bool
+  default     = false
+}

@@ -89,7 +89,12 @@ module "vpc_endpoints" {
   # connection issue between the task and Amazon CloudWatch" — with no
   # NAT in private-isolated and no logs endpoint, there was truly no
   # route there at all.
-  interface_endpoints_to_create      = ["ecr.api", "ecr.dkr", "events", "logs"]
+  # ssmmessages: ECS Exec's data channel (directus.tf's
+  # enable_execute_command) — the task sits in private-isolated with no
+  # NAT, so without this endpoint `aws ecs execute-command` hangs/fails
+  # to establish the session entirely, same class of gap as
+  # ecr.api/ecr.dkr/events/logs above.
+  interface_endpoints_to_create      = ["ecr.api", "ecr.dkr", "events", "logs", "ssmmessages"]
   existing_interface_endpoint_sg_ids = var.existing_interface_endpoint_sg_ids
   # ecs_medusa_sg and lambda_egress_sg were both missing here originally
   # — Medusa's and api-commerce's tasks sit outside private-isolated

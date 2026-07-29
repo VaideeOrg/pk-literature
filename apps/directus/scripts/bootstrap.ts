@@ -42,8 +42,7 @@ import {
 	createRole,
 	readPolicies,
 	createPolicy,
-	readItems,
-	createItem,
+	customEndpoint,
 	readPermissions,
 	createPermission,
 } from '@directus/sdk';
@@ -255,15 +254,30 @@ async function ensureRoleWithPolicy(client: Client, name: string, policyId: stri
 		console.log(`role ${name}: created`);
 	}
 
-	// directus_access has no dedicated SDK composable — managed as a
-	// plain system collection via the generic item operations, same as
-	// any other Directus system table (documented pattern for
-	// composables the SDK hasn't wrapped yet).
+	// directus_access has no dedicated SDK composable, and @directus/sdk
+	// 17.x's generic readItems/createItem now hard-reject core system
+	// collections client-side (throwIfCoreCollection, added since this
+	// script was first written - confirmed live: "Cannot use readItems
+	// for core collections"). The server itself still exposes
+	// directus_access at the normal /items/directus_access REST path;
+	// customEndpoint() is the SDK's documented raw escape hatch that
+	// isn't subject to that same client-side guard.
 	const existingAccess = await client.request(
-		readItems('directus_access', { filter: { role: { _eq: roleId }, policy: { _eq: policyId } } }),
+		customEndpoint<{ id: number }[]>({
+			path: '/items/directus_access',
+			method: 'GET',
+			params: { filter: { role: { _eq: roleId }, policy: { _eq: policyId } } },
+		}),
 	);
 	if (existingAccess.length === 0) {
-		await client.request(createItem('directus_access', { role: roleId, policy: policyId }));
+		await client.request(
+			customEndpoint({
+				path: '/items/directus_access',
+				method: 'POST',
+				body: JSON.stringify({ role: roleId, policy: policyId }),
+				headers: { 'Content-Type': 'application/json' },
+			}),
+		);
 		console.log(`role ${name}: attached to its policy`);
 	}
 }

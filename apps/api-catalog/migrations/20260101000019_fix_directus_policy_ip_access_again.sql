@@ -9,16 +9,18 @@
 -- ip_access fix because it wasn't this account's role at the time
 -- that fix was written.
 --
--- Confirmed live via a raw query run directly inside the container
--- against this same database (through ECS Exec, bypassing the API
--- entirely): the newly-(re)assigned "Administrator" policy has
--- ip_access = '0.0.0.0/0' - a non-null value, so
--- fetch-global-access-for-query.ts's `if (accountability.ip &&
--- ip_access)` check runs its network-match test on it at all (unlike
--- NULL, which always skips that check outright and is the only value
--- confirmed reliable so far). Rather than debug why a
--- theoretically-universal /0 CIDR might be failing to match in this
--- runtime, just apply the exact same known-good fix again.
+-- That "Administrator" policy's ip_access = '0.0.0.0/0' was also a
+-- manual UI action, separate from the role deletion above - set by
+-- hand in the IP Access field with the (reasonable, standard-CIDR)
+-- intent of allowing every address. Directus's own
+-- fetch-global-access-for-query.ts doesn't treat that as equivalent to
+-- "unrestricted" though: `if (accountability.ip && ip_access)` runs
+-- its network-match check against ANY non-null ip_access value, and
+-- that match is failing here for a reason not fully pinned down
+-- (possibly IPv6-mapped-address handling, possibly something else).
+-- NULL is the only value confirmed reliable (twice now) at skipping
+-- that check outright - leave the UI's IP Access field blank, not
+-- "0.0.0.0/0", for "no restriction" going forward.
 --
 -- Same query as 20260101000018, deliberately not hardcoded to a
 -- specific policy ID - it looks up the user's CURRENT role dynamically

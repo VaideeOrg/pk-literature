@@ -130,11 +130,6 @@ const STAGING_COLLECTIONS = [
 
 const ALL_COLLECTIONS = [...CATALOG_COLLECTIONS, ...STAGING_COLLECTIONS];
 
-// Collections a role gets full CRUD on regardless of status field
-// restrictions (everything staging-side — SPEC-03: "Editor Review" of
-// staging content isn't status-gated the way production catalog is).
-const STATUS_GATED_COLLECTIONS = ['works', 'books', 'collections'];
-
 async function main() {
 	let client: Client;
 	if (TOKEN) {
@@ -182,29 +177,30 @@ async function ensureCollectionsTracked(client: Client) {
 
 /**
  * Catalog Editor (SPEC-03): "Create Edit Review. Cannot delete
- * published books." Modeled as: full read/create/update on catalog +
- * staging collections, but the `status` field on works/books/collections
- * can never be set to published/archived (validation rule), and delete
- * is denied outright on any row currently in `published` status
- * (permissions filter).
+ * published books." The spec called for enforcing that via a
+ * `validation` rule blocking published/archived status transitions
+ * plus a `permissions` filter blocking delete on published rows - but
+ * both are Directus "custom permission rules", gated behind the
+ * `custom_permission_rules_enabled` license entitlement
+ * (services/permissions.js: `!getEntitlementManager().isEntitled(...)
+ * && hasCustomRule(data) => ResourceRestrictedError`), confirmed live
+ * against prod: `directus_settings.license_key`/`license_token` are
+ * both null on this self-hosted instance, so it isn't entitled and
+ * every attempt to create such a permission 403s outright.
+ *
+ * Simplified to full, unrestricted CRUD on every catalog + staging
+ * collection, same shape as Senior Editor below - the status-gated
+ * restriction isn't enforced at the Directus permission layer for
+ * now. If it's needed later without a license, it'd have to be a
+ * custom extension (an items.update/items.delete filter hook)
+ * enforcing the same rule in application code instead.
  */
 async function ensureCatalogEditorPolicy(client: Client): Promise<string> {
 	const policyId = await ensurePolicy(client, 'Catalog Editor');
 
 	for (const collection of ALL_COLLECTIONS) {
-		await ensurePermission(client, policyId, collection, 'read', {});
-		await ensurePermission(client, policyId, collection, 'create', {});
-
-		if (STATUS_GATED_COLLECTIONS.includes(collection)) {
-			await ensurePermission(client, policyId, collection, 'update', {
-				validation: { status: { _nin: ['published', 'archived'] } },
-			});
-			await ensurePermission(client, policyId, collection, 'delete', {
-				permissions: { status: { _neq: 'published' } },
-			});
-		} else {
-			await ensurePermission(client, policyId, collection, 'update', {});
-			await ensurePermission(client, policyId, collection, 'delete', {});
+		for (const action of ['read', 'create', 'update', 'delete'] as const) {
+			await ensurePermission(client, policyId, collection, action, {});
 		}
 	}
 

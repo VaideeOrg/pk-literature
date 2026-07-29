@@ -50,6 +50,7 @@ module "lambda_api_publisher_import" {
 
   filename         = local.api_publisher_import_zip
   source_code_hash = filebase64sha256(local.api_publisher_import_zip)
+  artifact_bucket  = module.lambda_artifacts.bucket_id
   handler          = "dist/src/lambda.handler"
   runtime          = "nodejs20.x"
   memory_size      = 512

@@ -42,6 +42,7 @@ module "lambda_api_catalog" {
 
   filename         = local.api_catalog_zip
   source_code_hash = filebase64sha256(local.api_catalog_zip)
+  artifact_bucket  = module.lambda_artifacts.bucket_id
   handler          = "dist/src/lambda.handler"
   runtime          = "nodejs20.x"
   memory_size      = 512

@@ -63,6 +63,7 @@ module "lambda_migration_runner" {
 
   filename         = local.migration_runner_zip
   source_code_hash = filebase64sha256(local.migration_runner_zip)
+  artifact_bucket  = module.lambda_artifacts.bucket_id
   handler          = "dist/src/index.handler"
   runtime          = "nodejs20.x"
   memory_size      = 512

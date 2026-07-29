@@ -128,6 +128,12 @@ module "secrets_manager" {
   environment = "prod"
 }
 
+module "lambda_artifacts" {
+  source = "../../modules/lambda-artifacts"
+
+  environment = "prod"
+}
+
 module "rds" {
   source = "../../modules/rds"
 

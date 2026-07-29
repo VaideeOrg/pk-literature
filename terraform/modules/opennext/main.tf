@@ -51,6 +51,7 @@ module "server_lambda" {
 
   filename         = var.server_zip_path
   source_code_hash = var.server_zip_hash
+  artifact_bucket  = var.artifact_bucket
   handler          = "index.handler"
   runtime          = "nodejs20.x"
   memory_size      = var.server_memory_size
@@ -77,6 +78,7 @@ module "image_lambda" {
 
   filename         = var.image_zip_path
   source_code_hash = var.image_zip_hash
+  artifact_bucket  = var.artifact_bucket
   handler          = "index.handler"
   runtime          = "nodejs20.x"
   memory_size      = var.image_memory_size

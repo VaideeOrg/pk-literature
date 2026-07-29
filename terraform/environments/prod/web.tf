@@ -20,7 +20,8 @@ locals {
 module "opennext" {
   source = "../../modules/opennext"
 
-  environment = "prod"
+  environment     = "prod"
+  artifact_bucket = module.lambda_artifacts.bucket_id
 
   server_zip_path = local.web_server_zip
   server_zip_hash = filebase64sha256(local.web_server_zip)

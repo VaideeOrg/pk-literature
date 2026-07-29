@@ -66,7 +66,16 @@ if (!TOKEN && !(ADMIN_EMAIL && ADMIN_PASSWORD)) {
 }
 
 function buildTokenClient(token: string) {
-	return createDirectus(DIRECTUS_URL).with(rest()).with(staticToken(token));
+	// authentication/staticToken registered BEFORE rest() - the
+	// documented @directus/sdk composable order (auth composables
+	// extend the client with token storage that rest() then reads from
+	// to attach the Authorization header). This alone was NOT the
+	// actual cause of a 403-despite-valid-token incident hit live in
+	// this repo - that turned out to be an IP-allowlist gap on the
+	// account's policies (see migration 20260101000018) - but this is
+	// still the correct order per the SDK's own usage pattern, worth
+	// keeping regardless.
+	return createDirectus(DIRECTUS_URL).with(staticToken(token)).with(rest());
 }
 
 function buildLoginClient() {
@@ -76,9 +85,12 @@ function buildLoginClient() {
 	// and set a cookie this process immediately discards, then every
 	// subsequent authenticated request goes out with no token attached
 	// at all, failing 403 as if anonymous. 'json' keeps the access
-	// token in memory and attaches it as a Bearer header instead - a
-	// real, live-confirmed failure mode, not a hypothetical one.
-	return createDirectus(DIRECTUS_URL).with(rest()).with(authentication('json'));
+	// token in memory and attaches it as a Bearer header instead.
+	//
+	// authentication() registered BEFORE rest() - see
+	// buildTokenClient's comment for why (correct SDK usage, not
+	// itself the fix for the IP-allowlist incident below).
+	return createDirectus(DIRECTUS_URL).with(authentication('json')).with(rest());
 }
 
 function buildClient() {

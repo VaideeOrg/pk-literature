@@ -37,8 +37,16 @@ package() {
     echo "       (@opennextjs/aws's output layout may have changed — check .open-next/ directly)" >&2
     exit 1
   fi
+  # Normalize file timestamps for a reproducible archive — see
+  # apps/api-catalog/scripts/package-lambda.sh's matching comment.
+  # open-next build re-emits every file fresh on each run, so without
+  # this source_code_hash changes on every build regardless of actual
+  # code changes, publishing a spurious new Lambda version on every
+  # terraform apply.
+  find "$src_dir" -exec touch -h -t 198001010000.00 {} +
+
   rm -f "$zip_path"
-  (cd "$src_dir" && zip -rqy "$zip_path" . -x "*.git*")
+  (cd "$src_dir" && zip -rqyX "$zip_path" . -x "*.git*")
   echo "==> Done: $zip_path ($(du -h "$zip_path" | cut -f1))"
 }
 

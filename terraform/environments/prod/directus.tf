@@ -96,6 +96,17 @@ module "ecs_directus" {
   # mode hit live (runningCount stuck at 0, ELB health check failures).
   health_check_grace_period_seconds = 180
 
+  # Enabled for live debugging: the account's role/policy/admin_access
+  # state has been fully verified correct via the REST API (see
+  # migration 20260101000018 and its follow-up investigation) yet
+  # POST /collections still 403s inexplicably. ECS Exec gives a real
+  # shell inside the running task to inspect the actual DB state (and
+  # this repo's own migration-runner Lambda can't reach RDS from
+  # CloudShell either, so this doubles as the fix for that standing
+  # gap) and to run node directly against the live process instead of
+  # guessing further from source-reading alone.
+  enable_execute_command = true
+
   environment_variables = {
     DB_CLIENT = "pg"
     # Pointed at RDS directly, bypassing RDS Proxy — testing whether

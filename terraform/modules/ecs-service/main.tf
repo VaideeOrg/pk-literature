@@ -74,6 +74,35 @@ resource "aws_iam_role" "task" {
   assume_role_policy = data.aws_iam_policy_document.ecs_assume_role.json
 }
 
+# ECS Exec's data channel runs over Session Manager, not the ECS API
+# itself — the task role (not the execution role, which is only ever
+# used by the ECS agent for image pull/log shipping) needs these three
+# SSM actions on itself (Resource = "*" is what AWS's own documented
+# ECS Exec IAM policy uses; the channel is identified by the task's own
+# runtime session, not a fixed ARN known at plan time).
+data "aws_iam_policy_document" "task_exec" {
+  count = var.enable_execute_command ? 1 : 0
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "ssmmessages:CreateControlChannel",
+      "ssmmessages:CreateDataChannel",
+      "ssmmessages:OpenControlChannel",
+      "ssmmessages:OpenDataChannel",
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "task_exec" {
+  count = var.enable_execute_command ? 1 : 0
+
+  name   = "ecs-exec"
+  role   = aws_iam_role.task.id
+  policy = data.aws_iam_policy_document.task_exec[0].json
+}
+
 resource "aws_iam_role_policy" "task_additional" {
   # Deliberately gated on the caller-supplied literal boolean, not on
   # `var.additional_policy_json != null`: every real caller's policy
@@ -146,11 +175,12 @@ resource "aws_ecs_task_definition" "this" {
 data "aws_region" "current" {}
 
 resource "aws_ecs_service" "this" {
-  name            = "pk-literature-${var.environment}-${var.service_name}"
-  cluster         = var.cluster_id
-  task_definition = aws_ecs_task_definition.this.arn
-  desired_count   = var.desired_count
-  launch_type     = "FARGATE"
+  name                   = "pk-literature-${var.environment}-${var.service_name}"
+  cluster                = var.cluster_id
+  task_definition        = aws_ecs_task_definition.this.arn
+  desired_count          = var.desired_count
+  launch_type            = "FARGATE"
+  enable_execute_command = var.enable_execute_command
 
   network_configuration {
     subnets          = var.subnet_ids

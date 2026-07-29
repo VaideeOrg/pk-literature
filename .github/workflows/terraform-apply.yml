@@ -98,7 +98,20 @@ jobs:
       - working-directory: terraform/environments/prod
         run: |
           terraform init -input=false
-          terraform apply -input=false -auto-approve
+          # -parallelism=1: this account's control-plane API endpoints
+          # (ap-southeast-1) have been observed returning responses
+          # cross-wired to the wrong concurrent request under load — a
+          # DescribeSecurityGroups call once got back an
+          # "InvalidAction: DescribeVpcEndpoints" error, i.e. a
+          # different in-flight request's response entirely. Forcing
+          # fully serial execution (no more than one request
+          # outstanding at a time) avoids whatever's demuxing responses
+          # incorrectly; default parallelism (10) reproduced this
+          # reliably across both CloudShell and this workflow's own
+          # OIDC session, ruling out credentials/session-expiry as the
+          # cause. Revert once AWS Support confirms/fixes the
+          # underlying issue.
+          terraform apply -input=false -auto-approve -parallelism=1
       - name: Sync OpenNext static assets to S3
         working-directory: terraform/environments/prod
         run: |

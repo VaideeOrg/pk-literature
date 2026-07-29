@@ -89,7 +89,12 @@ jobs:
 
       - name: terraform plan
         working-directory: terraform/environments/prod
-        run: terraform plan -input=false -out=tfplan
+        # -parallelism=1: see terraform-apply.yml's matching comment —
+        # this account's control-plane API endpoints have been observed
+        # cross-wiring responses to the wrong concurrent request under
+        # default parallelism (10), reproduced reliably across both
+        # CloudShell and this workflow's own fresh OIDC session.
+        run: terraform plan -input=false -out=tfplan -parallelism=1
 
       # Deliberately no `terraform apply` here — see terraform-apply.yml,
       # which only runs after merge to main.

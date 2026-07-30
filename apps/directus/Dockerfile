@@ -1,7 +1,20 @@
 # Editorial Workbench (SPEC-03). Multi-stage: build the custom Flow
 # operation extension (eventbridge-put-event) with its own toolchain,
-# then layer its dist/ output onto the official image — Directus loads
-# extensions by directory convention (extensions/operations/<name>/dist).
+# then layer its dist/ output onto the official image.
+#
+# Extensions must land FLAT under extensions/<name>/ - NOT nested
+# under a type subdirectory like extensions/operations/<name>/, despite
+# that being an older, no-longer-current Directus convention this
+# Dockerfile originally followed. Confirmed live against the deployed
+# 12.1.1: @directus/extensions/dist/node.js's resolveFsExtensions()
+# lists folders directly under EXTENSIONS_PATH and treats each one as
+# ONE extension, reading <folder>/package.json as its manifest - with
+# the old operations/<name>/ nesting, it found exactly one folder
+# ("operations"), failed to read a nonexistent operations/package.json,
+# silently discarded it (try/catch swallows the error), and returned
+# zero extensions. The extension's own manifest
+# (directus:extension.type) declares its type; directory nesting by
+# type isn't how Directus discovers it.
 #
 # See ../README.md's "Known issue" for the full history: Directus
 # 11.17.4 crashed on first boot against the real prod RDS Postgres at
@@ -77,8 +90,8 @@ COPY extensions/operations/promote-staging-book/ ./
 RUN npm run build
 
 FROM directus/directus:${DIRECTUS_VERSION}
-COPY --from=extension-build /build/dist /directus/extensions/operations/eventbridge-put-event/dist
-COPY --from=extension-build /build/package.json /directus/extensions/operations/eventbridge-put-event/package.json
+COPY --from=extension-build /build/dist /directus/extensions/eventbridge-put-event/dist
+COPY --from=extension-build /build/package.json /directus/extensions/eventbridge-put-event/package.json
 COPY --from=extension-build /build/rds-ca-bundle.pem /directus/rds-ca-bundle.pem
-COPY --from=extension-build-promote /build/dist /directus/extensions/operations/promote-staging-book/dist
-COPY --from=extension-build-promote /build/package.json /directus/extensions/operations/promote-staging-book/package.json
+COPY --from=extension-build-promote /build/dist /directus/extensions/promote-staging-book/dist
+COPY --from=extension-build-promote /build/package.json /directus/extensions/promote-staging-book/package.json

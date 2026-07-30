@@ -303,18 +303,17 @@ async function ensureRoleWithPolicy(client: Client, name: string, policyId: stri
  * status change to something other than 'approved', reaches the
  * condition and stops there via its unset `reject` edge).
  *
- * UNVERIFIED against a live Directus instance, same caveat as the
- * rest of this file's header comment but more acutely here: the
- * condition operation's options.filter evaluation semantics (what
- * context it evaluates against - $trigger.payload directly, or
- * requiring an explicit {{$trigger.payload.status}} template value
- * inside the rule) are written from documented/community Directus
- * Flow usage, not confirmed against this repo's actual deployed
- * 12.1.1 - this whole function should be treated as the next thing to
- * verify live and correct, the same way ensureCollectionsTracked's
- * `fields`->`meta` payload shape and ensureRoleWithPolicy's
- * /items/directus_access->/access route both turned out to need
- * fixing only once actually run against prod.
+ * Condition filter path confirmed live: a real trigger firing (
+ * webhook log showed `{ event, payload: { status: "approved" },
+ * keys, collection }`) plus reading operations/condition/index.js
+ * inside the running container together confirmed `data` for this
+ * first operation is that whole event object, not payload flattened
+ * to top level - see the filter's own inline comment below for the
+ * full reasoning. This function's remaining unverified piece: whether
+ * `{{$trigger.keys[0]}}` correctly resolves for the second operation
+ * (promote_to_catalog's stagingBookId option) - not yet confirmed the
+ * flow gets that far, only that the condition operation itself now
+ * evaluates correctly.
  */
 async function ensurePromotionFlow(client: Client) {
 	const FLOW_NAME = 'Promote Staging Book';
@@ -349,9 +348,22 @@ async function ensurePromotionFlow(client: Client) {
 			position_x: 19,
 			position_y: 1,
 			flow: flow.id,
+			// CONFIRMED live against a real trigger firing: the condition
+			// operation's `filter` is validated directly against
+			// `data` (operations/condition/index.js:
+			// `validatePayload(parsedFilter, data, { requireAll:
+			// true })`), and for the first operation after an
+			// event-hook trigger, `data` is the WHOLE trigger event
+			// object ({ event, payload, keys, collection }), not
+			// payload flattened to the top level - a bare `status`
+			// key failed with "Validation failed for field status.
+			// Value is required." because data.status doesn't exist,
+			// only data.payload.status does.
 			options: {
 				filter: {
-					status: { _eq: 'approved' },
+					payload: {
+						status: { _eq: 'approved' },
+					},
 				},
 			},
 		}),

@@ -58,7 +58,7 @@ async function linkAuthors(trx: Knex.Transaction, workId: string, authorNames: s
 export default defineOperationApi<Options>({
 	id: 'promote-staging-book',
 
-	handler: async ({ stagingBookId }, { database, logger }) => {
+	handler: async ({ stagingBookId }, { database, logger, accountability }) => {
 		return database.transaction(async (trx) => {
 			const stagingBook: StagingBook | undefined = await trx('staging.staging_books')
 				.where({ id: stagingBookId })
@@ -189,10 +189,19 @@ export default defineOperationApi<Options>({
 			// book_collections - blocked on those junction tables
 			// getting surrogate primary keys first, same gap noted
 			// during the bootstrap.ts work).
+			// accountability.user is the editor who triggered the Flow
+			// (the same one who set status -> 'approved', given today's
+			// automatic-on-approval trigger) - null for a non-user-
+			// initiated run (e.g. manually testing this operation
+			// directly via the Flow's "Test" button with no
+			// accountability context), in which case promoted_by stays
+			// null rather than the promotion failing outright.
 			await trx('staging.staging_books').where({ id: stagingBookId }).update({
 				status: 'merged',
 				promoted_work_id: workId,
 				promoted_book_id: bookId,
+				promoted_by: accountability?.user ?? null,
+				promoted_at: trx.fn.now(),
 			});
 
 			logger.info(

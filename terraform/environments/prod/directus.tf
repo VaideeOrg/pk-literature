@@ -147,19 +147,26 @@ module "ecs_directus" {
     # public first: directus_app's own tables live there (migration
     # 20260101000015_directus_use_public_schema.sql) and the knex/pg
     # search_path convention resolves unqualified names against the
-    # first matching schema in list order. catalog/staging/discovery
-    # added so Directus's schema introspection (@directus/schema) can
-    # see works/books/staging_books/etc - these tables were never
-    # moved to public (catalog.*/staging.*/discovery.* are referenced
-    # by fully-qualified name throughout api-catalog/api-search/
-    # api-commerce/discovery.sql, unlike directus_app's own tables
-    # which nothing else in this repo touches). Untested whether this
-    # actually works - README.md documents the *reverse* case (public
-    # added as a fallback alongside directus) still failing to fix
-    # Directus's own cross-schema introspection gap, so this may not
-    # hold either; it's the cheap thing to try before building
-    # public-schema views that mirror these tables.
-    DB_SEARCH_PATH       = "public,catalog,staging,discovery"
+    # first matching schema in list order. catalog/staging added so
+    # Directus's schema introspection (@directus/schema) can see
+    # works/books/staging_books/etc - confirmed live this actually
+    # works, unlike the README's documented *reverse* case (public
+    # added as a fallback alongside directus's own non-public schema,
+    # which never worked).
+    #
+    # discovery deliberately excluded, unlike the original version of
+    # this list: directus_app's DB role was never granted USAGE on
+    # that schema (it's api-feed's exclusive domain - interest_
+    # profiles/interest_events/feed_shelves, no SPEC-03 editorial
+    # relevance), and search_path only changes what Directus is
+    # willing to LOOK for, not what its DB role can actually see -
+    # confirmed live: including it broke GET /fields outright with a
+    # raw Postgres "permission denied for schema discovery" (42501),
+    # taking down the whole Admin UI (every page calls /fields). Least-
+    # privilege is also the correct call here on its own terms, not
+    # just the fix for the crash - Directus has no legitimate reason
+    # to reach into api-feed's schema.
+    DB_SEARCH_PATH       = "public,catalog,staging"
     PUBLIC_URL           = "https://directus.${var.domain_name}"
     ADMIN_EMAIL          = module.secrets_manager.directus_admin_email
     STORAGE_LOCATIONS    = "s3"

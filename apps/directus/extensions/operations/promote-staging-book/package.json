@@ -1,0 +1,29 @@
+{
+  "name": "directus-extension-promote-staging-book",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Directus Flow operation: promote an approved staging.staging_books row into catalog.works/catalog.books (create new, or merge into the matched existing row) inside a single DB transaction. Runs in Directus's main process (not the sandboxed Run Script VM) for direct Knex/transaction access - context.database (infrastructure/iam.md's ecs-directus catalog+staging read/write grant, the sole write path into catalog per SPEC-03).",
+  "keywords": ["directus", "directus-extension", "directus-custom-operation"],
+  "directus:extension": {
+    "type": "operation",
+    "path": {
+      "app": "dist/app.js",
+      "api": "dist/api.js"
+    },
+    "source": {
+      "app": "src/app.ts",
+      "api": "src/api.ts"
+    },
+    "host": "^11.0.0 || ^12.0.0"
+  },
+  "scripts": {
+    "build": "directus-extension build",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@directus/extensions-sdk": "^12.1.0",
+    "@types/node": "^20.16.11",
+    "knex": "^3.1.0",
+    "typescript": "^5.6.3"
+  }
+}

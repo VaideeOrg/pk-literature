@@ -166,7 +166,24 @@ module "ecs_directus" {
     # privilege is also the correct call here on its own terms, not
     # just the fix for the crash - Directus has no legitimate reason
     # to reach into api-feed's schema.
-    DB_SEARCH_PATH       = "public,catalog,staging"
+    DB_SEARCH_PATH = "public,catalog,staging"
+    # Confirmed live: getExtensionsPath() (extensions/lib/get-
+    # extensions-path.js) returns env["EXTENSIONS_PATH"] with no
+    # fallback default in that code path - unset, this resolved to
+    # undefined, resolveFsExtensions(undefined) found nothing, and
+    # both eventbridge-put-event and promote-staging-book (real
+    # files on disk, loaded cleanly per boot logs - "Extensions
+    # loaded" with no error) never appeared anywhere: not in GET
+    # /extensions/sources/index.js's bundle, not in Settings ->
+    # Extensions ("no extensions installed yet"), not as a
+    # selectable Flow operation type. Whatever default this Directus
+    # version normally documents for this key evidently isn't
+    # applied automatically in this deployment - set explicitly
+    # instead of relying on it. Relative to WORKDIR (/directus,
+    # confirmed via `pwd` inside the running container), matching
+    # where the Dockerfile actually COPYs both extensions'
+    # dist/package.json into.
+    EXTENSIONS_PATH      = "extensions"
     PUBLIC_URL           = "https://directus.${var.domain_name}"
     ADMIN_EMAIL          = module.secrets_manager.directus_admin_email
     STORAGE_LOCATIONS    = "s3"

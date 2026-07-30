@@ -30,7 +30,7 @@ existing_nat_gateway_ids                 = []                                   
 # once its state entry collided with an unrelated resource's rule ID.
 existing_interface_endpoint_sg_ids = ["sg-0893b4a98e0b5a7c9"]
 
-# Flipped false: the first 2 books (promoted from staging, published
-# via the Directus editorial workflow) are live and confirmed showing
-# via GET /v1/feed and /v1/search - see variables.tf.
-coming_soon_mode = false
+# Flipped back to true: gating the storefront again while inventory/
+# cover-image issues (empty covers, out-of-stock inventory on newly
+# promoted books) get sorted out - see variables.tf.
+coming_soon_mode = true

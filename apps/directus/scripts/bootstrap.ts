@@ -348,21 +348,25 @@ async function ensurePromotionFlow(client: Client) {
 			position_x: 19,
 			position_y: 1,
 			flow: flow.id,
-			// CONFIRMED live against a real trigger firing: the condition
-			// operation's `filter` is validated directly against
-			// `data` (operations/condition/index.js:
-			// `validatePayload(parsedFilter, data, { requireAll:
-			// true })`), and for the first operation after an
-			// event-hook trigger, `data` is the WHOLE trigger event
-			// object ({ event, payload, keys, collection }), not
-			// payload flattened to the top level - a bare `status`
-			// key failed with "Validation failed for field status.
-			// Value is required." because data.status doesn't exist,
-			// only data.payload.status does.
+			// CONFIRMED live against a real trigger firing (verified via a
+			// temporary Run Script operation that echoed its `data` argument
+			// straight into the run log): the condition operation's `filter`
+			// is validated directly against `data` (operations/condition/
+			// index.js: `validatePayload(parsedFilter, data, { requireAll:
+			// true })`), and for an event-hook trigger `data` is namespaced
+			// as `{ $trigger: { event, payload, keys, collection }, $last,
+			// $accountability, $env }` - NOT the raw trigger event object
+			// directly, and NOT `payload` flattened to the top level either.
+			// Two earlier guesses (`{ status: ... }`, then
+			// `{ payload: { status: ... } }`) both failed with "Value is
+			// required" for exactly this reason - only `$trigger.payload.
+			// status` actually exists on `data`.
 			options: {
 				filter: {
-					payload: {
-						status: { _eq: 'approved' },
+					$trigger: {
+						payload: {
+							status: { _eq: 'approved' },
+						},
 					},
 				},
 			},

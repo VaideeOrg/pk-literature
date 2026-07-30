@@ -157,8 +157,18 @@ jobs:
             apps/web/dist-image-lambda.zip
             apps/web/.open-next/assets
           key: web-opennext-${{ hashFiles('apps/web/app/**', 'apps/web/src/**', 'apps/web/middleware.ts', 'apps/web/*.config.*', 'apps/web/package.json', 'apps/web/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/ui/src/**', 'packages/ui/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
+      # Kept identical to terraform-apply.yml's own copy of this step
+      # deliberately - the cache key above is hashFiles()-based (source
+      # only, no env vars), so a build cached here without these could
+      # get reused by terraform-apply.yml on the merge commit instead
+      # of rebuilding with the correct values. See that workflow's copy
+      # of this step for the full explanation.
       - name: Build apps/web OpenNext packages
         if: steps.cache-web.outputs.cache-hit != 'true'
+        env:
+          NEXT_PUBLIC_API_BASE_URL: https://api.puthagakadai.com
+          NEXT_PUBLIC_CDN_HOST: cdn.puthagakadai.com
+          NEXT_PUBLIC_RAZORPAY_KEY_ID: ${{ vars.RAZORPAY_KEY_ID_PROD }}
         run: bash scripts/package-opennext.sh
         working-directory: apps/web
 

@@ -26,7 +26,14 @@ module "opennext" {
   server_zip_path = local.web_server_zip
   server_zip_hash = filebase64sha256(local.web_server_zip)
   server_environment_variables = {
-    API_BASE_URL     = "https://api.${var.domain_name}/v1"
+    # No /v1 suffix: every apps/web/src/lib/api/*.ts call already
+    # includes /v1 in its own path (e.g. fetcher("/v1/feed")), and
+    # server-fetch.ts does naive `${API_BASE_URL}${path}`
+    # concatenation - a /v1 suffix here would double it up into
+    # .../v1/v1/feed, which doesn't match any real API Gateway route
+    # (api-feed.tf registers GET /v1/feed, not /v1/v1/feed).
+    # .env.example already has this right; this Lambda env var didn't.
+    API_BASE_URL     = "https://api.${var.domain_name}"
     COMING_SOON_MODE = var.coming_soon_mode ? "true" : "false"
   }
 

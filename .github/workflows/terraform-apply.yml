@@ -162,8 +162,30 @@ jobs:
             apps/web/dist-image-lambda.zip
             apps/web/.open-next/assets
           key: web-opennext-${{ hashFiles('apps/web/app/**', 'apps/web/src/**', 'apps/web/middleware.ts', 'apps/web/*.config.*', 'apps/web/package.json', 'apps/web/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/ui/src/**', 'packages/ui/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
+      # Next.js inlines NEXT_PUBLIC_* into the client bundle at `next
+      # build` time (web.tf's own header comment already documented
+      # this requirement - this step just never actually did it).
+      # Without these, the deployed client bundle falls back to
+      # apps/web/src/lib/api/client-fetch.ts's dev default
+      # (http://localhost:3000) for every browser-side fetch, and
+      # next.config.ts's image remotePatterns falls back to the dev
+      # placeholder CDN host - breaking client-side API calls and
+      # next/image for covers in prod, independent of whether catalog
+      # data exists.
+      #
+      # Domain hardcoded here to match terraform.tfvars's committed
+      # domain_name (not a secret, single-environment posture, same
+      # value terraform-apply.yml already implicitly assumes
+      # elsewhere) - keep in sync if that ever changes.
+      # RAZORPAY_KEY_ID is Razorpay's own publishable/public key
+      # (not the key_secret), which is why this is a repo variable,
+      # not a secret - same distinction apps/web/.env.example draws.
       - name: Build apps/web OpenNext packages
         if: steps.cache-web.outputs.cache-hit != 'true'
+        env:
+          NEXT_PUBLIC_API_BASE_URL: https://api.puthagakadai.com
+          NEXT_PUBLIC_CDN_HOST: cdn.puthagakadai.com
+          NEXT_PUBLIC_RAZORPAY_KEY_ID: ${{ vars.RAZORPAY_KEY_ID_PROD }}
         run: bash scripts/package-opennext.sh
         working-directory: apps/web
 

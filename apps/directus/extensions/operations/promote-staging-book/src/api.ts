@@ -1,4 +1,5 @@
 import { defineOperationApi } from '@directus/extensions-sdk';
+import { S3Client, CopyObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import type { Knex } from 'knex';
 
 type Options = {
@@ -26,6 +27,15 @@ type StagingBook = {
 	promoted_work_id: string | null;
 	promoted_book_id: string | null;
 };
+
+// One client per container lifetime, same reasoning as the
+// eventbridge-put-event extension's EventBridgeClient - region/
+// credentials come from the ECS task's own environment (Directus's
+// task role, which already has s3:GetObject/PutObject on this bucket
+// per directus.tf's directus_task IAM policy - s3:CopyObject needs no
+// separate grant, it's authorized via the same Get+Put actions on
+// source and destination).
+const s3 = new S3Client({});
 
 /**
  * Resolves each staging author name to a catalog.authors row (case-
@@ -55,10 +65,211 @@ async function linkAuthors(trx: Knex.Transaction, workId: string, authorNames: s
 	}
 }
 
+/**
+ * Promotes the most recently uploaded staging_media row (if any) for
+ * this staging book: copies the S3 object from its staging/ prefix to
+ * a permanent covers/ key (media-storage.service.ts's own header
+ * comment documents this exact staging/->covers/ split, so a rejected
+ * staging book's never-reviewed cover is never reachable via the same
+ * key an approved one would use), creates/updates the matching
+ * catalog.media_assets row, and points books.cover_asset_id at it.
+ *
+ * Runs for both the create-new and merge paths - a re-crawl that
+ * turns up a newer/better cover should replace an existing one, same
+ * "staging wins when present" philosophy as every other merged field.
+ * No-ops silently if there's no successfully uploaded staging_media
+ * row (most staging books won't have one yet, or the cover download
+ * step failed) - a book without a cover is a valid, unremarkable
+ * state, not an error.
+ *
+ * Deliberately does NOT delete the staging/ S3 object after copying -
+ * leaves a harmless duplicate rather than risking data loss if
+ * anything downstream of this operation fails. Cleanup of stale
+ * staging/ objects, if wanted, belongs in an S3 lifecycle rule (same
+ * pattern as terraform/modules/lambda-artifacts' 90-day expiration),
+ * not here.
+ */
+async function promoteMedia(
+	trx: Knex.Transaction,
+	env: Record<string, any>,
+	logger: { warn: (msg: string) => void },
+	stagingBookId: string,
+	bookId: string,
+): Promise<void> {
+	const media = await trx('staging.staging_media')
+		.where({ staging_book_id: stagingBookId, status: 'uploaded' })
+		.whereNotNull('s3_key')
+		.orderBy('created_at', 'desc')
+		.first();
+
+	if (!media) {
+		return;
+	}
+
+	const bucket = env['STORAGE_S3_BUCKET'];
+	if (!bucket) {
+		logger.warn(`STORAGE_S3_BUCKET not set - skipping media promotion for staging_book ${stagingBookId}`);
+		return;
+	}
+
+	const destKey = `covers/${bookId}/cover-original`;
+
+	await s3.send(
+		new CopyObjectCommand({
+			Bucket: bucket,
+			CopySource: `${bucket}/${media.s3_key}`,
+			Key: destKey,
+			MetadataDirective: 'COPY',
+		}),
+	);
+
+	// MetadataDirective: 'COPY' preserves the original ContentType set
+	// at upload time (media-storage.service.ts's PutObjectCommand) -
+	// read it back rather than guessing, since catalog.media_assets.
+	// content_type is NOT NULL.
+	const head = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: destKey }));
+	const contentType = head.ContentType ?? 'application/octet-stream';
+
+	const [asset] = await trx('catalog.media_assets')
+		.insert({
+			asset_type: 'cover',
+			s3_key: destKey,
+			content_type: contentType,
+			checksum_sha256: media.checksum_sha256,
+			source_url: media.source_url,
+		})
+		.onConflict('s3_key')
+		.merge(['content_type', 'checksum_sha256', 'source_url'])
+		.returning('id');
+
+	await trx('catalog.books').where({ id: bookId }).update({ cover_asset_id: asset.id });
+}
+
+/**
+ * Upserts catalog.inventory from staging_books' own price/stock/
+ * currency columns (the "current" snapshot the import pipeline writes
+ * per book) - not staging.staging_inventory, which is a separate,
+ * multi-row-per-book table that reads more like a historical capture
+ * log (captured_at, no upsert-friendly shape) than "the current
+ * truth"; nothing in this repo populates it today, and conflating the
+ * two would need a real decision about which one wins that isn't
+ * this operation's to make.
+ *
+ * catalog.inventory.price is NOT NULL, so this silently no-ops when
+ * staging has no price yet (a real, unremarkable state - e.g. a
+ * rejected or not-yet-fully-crawled staging book) rather than failing
+ * the whole promotion over a missing price.
+ */
+async function promoteInventory(trx: Knex.Transaction, stagingBook: StagingBook, bookId: string): Promise<void> {
+	if (stagingBook.price == null) {
+		return;
+	}
+
+	await trx('catalog.inventory')
+		.insert({
+			book_id: bookId,
+			stock: stagingBook.stock ?? 0,
+			price: stagingBook.price,
+			currency: stagingBook.currency ?? 'INR',
+			availability: (stagingBook.stock ?? 0) > 0 ? 'in_stock' : 'out_of_stock',
+			updated_by: 'adapter',
+			last_sync_time: trx.fn.now(),
+		})
+		.onConflict('book_id')
+		.merge(['stock', 'price', 'currency', 'availability', 'updated_by', 'last_sync_time']);
+}
+
+const RELATIONSHIP_TARGETS: Record<
+	string,
+	{ scope: 'work' | 'book'; junctionTable: string; targetColumn: string; lookupTable: string }
+> = {
+	theme: { scope: 'work', junctionTable: 'catalog.work_themes', targetColumn: 'theme_id', lookupTable: 'catalog.themes' },
+	genre: { scope: 'work', junctionTable: 'catalog.work_genres', targetColumn: 'genre_id', lookupTable: 'catalog.genres' },
+	literary_movement: {
+		scope: 'work',
+		junctionTable: 'catalog.work_literary_movements',
+		targetColumn: 'literary_movement_id',
+		lookupTable: 'catalog.literary_movements',
+	},
+	collection: {
+		scope: 'book',
+		junctionTable: 'catalog.book_collections',
+		targetColumn: 'collection_id',
+		lookupTable: 'catalog.collections',
+	},
+};
+
+/**
+ * Promotes staging_relationships rows into the corresponding catalog
+ * M:N junction table (work_themes/work_genres/work_literary_movements
+ * for Work-scoped relationships, book_collections for Book-scoped).
+ *
+ * UNVERIFIED, more so than anything else in this operation: nothing
+ * in this repo (grepped apps/api-publisher-import and packages/
+ * adapter-sdk in full) actually writes to staging_relationships today
+ * - no adapter populates it, so relationship_type's real string
+ * vocabulary has never been observed, only guessed at here
+ * ('theme'/'genre'/'literary_movement'/'collection', matching the
+ * catalog concepts staging_relationships.target_label most plausibly
+ * refers to). Confirm against whatever an adapter eventually writes
+ * before trusting this in production - an unrecognized
+ * relationship_type is logged and skipped, not treated as an error,
+ * specifically because this mapping is a guess.
+ *
+ * Lookup-only for themes/genres/literary_movements/collections -
+ * deliberately does NOT auto-create a new one from an unmatched
+ * target_label the way linkAuthors() does for authors. Those four are
+ * curated taxonomies an editor defines, not an open set like author
+ * names - auto-expanding them from noisy crawled label text would
+ * pollute the taxonomy. Unmatched labels are logged and skipped.
+ */
+async function promoteRelationships(
+	trx: Knex.Transaction,
+	logger: { warn: (msg: string) => void },
+	stagingBookId: string,
+	workId: string,
+	bookId: string,
+): Promise<void> {
+	const relationships = await trx('staging.staging_relationships').where({ staging_book_id: stagingBookId });
+
+	for (const rel of relationships) {
+		const target = RELATIONSHIP_TARGETS[rel.relationship_type];
+		if (!target) {
+			logger.warn(
+				`staging_relationships row ${rel.id}: unrecognized relationship_type "${rel.relationship_type}" - skipping`,
+			);
+			continue;
+		}
+
+		let targetId: string | null = rel.target_id ?? null;
+		if (!targetId) {
+			const found = await trx(target.lookupTable)
+				.whereRaw('lower(name) = lower(?)', [rel.target_label])
+				.first('id');
+			targetId = found?.id ?? null;
+		}
+
+		if (!targetId) {
+			logger.warn(
+				`staging_relationships row ${rel.id}: no catalog ${target.lookupTable} match for "${rel.target_label}" - skipping`,
+			);
+			continue;
+		}
+
+		const parentId = target.scope === 'work' ? workId : bookId;
+		const parentColumn = target.scope === 'work' ? 'work_id' : 'book_id';
+
+		await trx(target.junctionTable)
+			.insert({ [parentColumn]: parentId, [target.targetColumn]: targetId })
+			.onConflict([parentColumn, target.targetColumn])
+			.ignore();
+	}
+}
+
 export default defineOperationApi<Options>({
 	id: 'promote-staging-book',
 
-	handler: async ({ stagingBookId }, { database, logger, accountability }) => {
+	handler: async ({ stagingBookId }, { database, logger, accountability, env }) => {
 		return database.transaction(async (trx) => {
 			const stagingBook: StagingBook | undefined = await trx('staging.staging_books')
 				.where({ id: stagingBookId })
@@ -180,15 +391,10 @@ export default defineOperationApi<Options>({
 				bookId = book.id;
 			}
 
-			// TODO(follow-up, not yet built): media promotion
-			// (staging_media -> catalog.media_assets + S3 copy from the
-			// staging/ prefix, then books.cover_asset_id), inventory
-			// promotion (staging_inventory -> catalog.inventory), and
-			// relationship promotion (staging_relationships ->
-			// work_themes/work_genres/work_literary_movements/
-			// book_collections - blocked on those junction tables
-			// getting surrogate primary keys first, same gap noted
-			// during the bootstrap.ts work).
+			await promoteMedia(trx, env, logger, stagingBookId, bookId);
+			await promoteInventory(trx, stagingBook, bookId);
+			await promoteRelationships(trx, logger, stagingBookId, workId, bookId);
+
 			// accountability.user is the editor who triggered the Flow
 			// (the same one who set status -> 'approved', given today's
 			// automatic-on-approval trigger) - null for a non-user-

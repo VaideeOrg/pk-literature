@@ -45,6 +45,11 @@ import {
 	customEndpoint,
 	readPermissions,
 	createPermission,
+	readFlows,
+	createFlow,
+	updateFlow,
+	createOperation,
+	updateOperation,
 } from '@directus/sdk';
 
 function requireEnv(name: string): string {
@@ -144,6 +149,7 @@ async function main() {
 	const seniorEditorPolicyId = await ensureSeniorEditorPolicy(client);
 	await ensureRoleWithPolicy(client, 'Catalog Editor', catalogEditorPolicyId);
 	await ensureRoleWithPolicy(client, 'Senior Editor', seniorEditorPolicyId);
+	await ensurePromotionFlow(client);
 
 	console.log('Directus bootstrap complete.');
 }
@@ -285,6 +291,89 @@ async function ensureRoleWithPolicy(client: Client, name: string, policyId: stri
 		);
 		console.log(`role ${name}: attached to its policy`);
 	}
+}
+
+/**
+ * Wires the promote-staging-book custom operation
+ * (extensions/operations/promote-staging-book) to actually fire: an
+ * event-hook Flow, triggered after any update to staging_books,
+ * gated by a condition operation checking status == 'approved' so it
+ * only proceeds down the trigger-then-condition-then-promote chain on
+ * the specific transition that matters (any other field edit, or a
+ * status change to something other than 'approved', reaches the
+ * condition and stops there via its unset `reject` edge).
+ *
+ * UNVERIFIED against a live Directus instance, same caveat as the
+ * rest of this file's header comment but more acutely here: the
+ * condition operation's options.filter evaluation semantics (what
+ * context it evaluates against - $trigger.payload directly, or
+ * requiring an explicit {{$trigger.payload.status}} template value
+ * inside the rule) are written from documented/community Directus
+ * Flow usage, not confirmed against this repo's actual deployed
+ * 12.1.1 - this whole function should be treated as the next thing to
+ * verify live and correct, the same way ensureCollectionsTracked's
+ * `fields`->`meta` payload shape and ensureRoleWithPolicy's
+ * /items/directus_access->/access route both turned out to need
+ * fixing only once actually run against prod.
+ */
+async function ensurePromotionFlow(client: Client) {
+	const FLOW_NAME = 'Promote Staging Book';
+	const existingFlows = await client.request(readFlows({ filter: { name: { _eq: FLOW_NAME } } }));
+	if (existingFlows[0]) {
+		console.log(`flow ${FLOW_NAME}: already exists`);
+		return;
+	}
+
+	const flow = await client.request(
+		createFlow({
+			name: FLOW_NAME,
+			icon: 'move_up',
+			description: "Promotes an approved staging_books row into catalog.works/catalog.books. See extensions/operations/promote-staging-book.",
+			status: 'active',
+			trigger: 'event',
+			accountability: 'all',
+			options: {
+				type: 'action',
+				scope: ['items.update'],
+				collections: ['staging_books'],
+			},
+		}),
+	);
+	console.log(`flow ${FLOW_NAME}: created`);
+
+	const conditionOperation = await client.request(
+		createOperation({
+			name: 'Status is approved?',
+			key: 'status_is_approved',
+			type: 'condition',
+			position_x: 19,
+			position_y: 1,
+			flow: flow.id,
+			options: {
+				filter: {
+					status: { _eq: 'approved' },
+				},
+			},
+		}),
+	);
+
+	const promoteOperation = await client.request(
+		createOperation({
+			name: 'Promote to catalog',
+			key: 'promote_to_catalog',
+			type: 'promote-staging-book',
+			position_x: 39,
+			position_y: 1,
+			flow: flow.id,
+			options: {
+				stagingBookId: '{{$trigger.keys[0]}}',
+			},
+		}),
+	);
+
+	await client.request(updateOperation(conditionOperation.id, { resolve: promoteOperation.id }));
+	await client.request(updateFlow(flow.id, { operation: conditionOperation.id }));
+	console.log(`flow ${FLOW_NAME}: wired (trigger -> status_is_approved -> promote_to_catalog)`);
 }
 
 async function ensurePermission(

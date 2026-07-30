@@ -12,8 +12,15 @@ ROOT_DIR="$(cd "$APP_DIR/../.." && pwd)"
 STAGING_DIR="$ROOT_DIR/.lambda-package/api-publisher-import"
 ZIP_PATH="$APP_DIR/dist-lambda.zip"
 
-echo "==> Building workspace packages (adapter-sdk, contracts, api-publisher-import)"
-(cd "$ROOT_DIR" && pnpm --filter @pk-literature/adapter-sdk --filter @pk-literature/contracts --filter api-publisher-import run build)
+echo "==> Building workspace packages (domain-types, adapter-sdk, contracts, api-publisher-import)"
+# domain-types must build before contracts - every sibling service's
+# package-lambda.sh already includes it (packages/contracts' own
+# src/*.ts imports from @pk-literature/domain-types); this one was
+# missing it, which only surfaces in CI (a clean checkout with no
+# pre-existing packages/domain-types/dist to fall back on) as
+# "Cannot find module '@pk-literature/domain-types'" from contracts'
+# own tsc build.
+(cd "$ROOT_DIR" && pnpm --filter @pk-literature/domain-types --filter @pk-literature/adapter-sdk --filter @pk-literature/contracts --filter api-publisher-import run build)
 
 echo "==> Resolving a self-contained package (pnpm deploy --prod)"
 rm -rf "$STAGING_DIR"

@@ -85,9 +85,9 @@ variable "existing_interface_endpoint_sg_ids" {
 }
 
 variable "directus_image_tag" {
-  description = "Tag pushed by .github/workflows/build-directus-image.yml (its own directus_image_tag input, separate from the upstream directus_version build-arg). ECR tags are IMMUTABLE (terraform/bootstrap/ecr.tf), and this image bakes in our own layer on top of the pinned upstream directus/directus base (eventbridge-put-event extension, RDS CA bundle for the direct-to-RDS test, now also promote-staging-book) — a change to that layer needs a new tag to roll out even when the upstream version hasn't moved, same as medusa_image_tag's own -N convention. The -2 suffix marks build revision 2 of upstream 12.1.1: adds the promote-staging-book custom operation extension (staging.staging_books -> catalog.works/catalog.books promotion, apps/directus/extensions/operations/promote-staging-book) alongside eventbridge-put-event - revision 1 only had the RDS CA bundle."
+  description = "Tag pushed by .github/workflows/build-directus-image.yml (its own directus_image_tag input, separate from the upstream directus_version build-arg). ECR tags are IMMUTABLE (terraform/bootstrap/ecr.tf), and this image bakes in our own layer on top of the pinned upstream directus/directus base (eventbridge-put-event extension, RDS CA bundle for the direct-to-RDS test, promote-staging-book) — a change to that layer needs a new tag to roll out even when the upstream version hasn't moved, same as medusa_image_tag's own -N convention. The -3 suffix marks build revision 3 of upstream 12.1.1: moves both extensions from extensions/operations/<name>/ to extensions/<name>/ (flat, no type subdirectory) in the Dockerfile's final COPY destinations - confirmed live that @directus/extensions' resolveFsExtensions() only recognizes extensions directly under EXTENSIONS_PATH, so the old operations/-nested layout meant Directus discovered zero extensions the entire time, regardless of EXTENSIONS_PATH (revision 2) being set correctly. Revision 2 added promote-staging-book; revision 1 only had the RDS CA bundle."
   type        = string
-  default     = "12.1.1-2"
+  default     = "12.1.1-3"
 }
 
 variable "medusa_image_tag" {

@@ -144,14 +144,30 @@ module "ecs_directus" {
     # ADR-009).
     DB_SSL__CA_FILE             = "/directus/rds-ca-bundle.pem"
     DB_SSL__REJECT_UNAUTHORIZED = "true"
-    PUBLIC_URL                  = "https://directus.${var.domain_name}"
-    ADMIN_EMAIL                 = module.secrets_manager.directus_admin_email
-    STORAGE_LOCATIONS           = "s3"
-    STORAGE_S3_DRIVER           = "s3"
-    STORAGE_S3_BUCKET           = module.s3.bucket_id
-    STORAGE_S3_REGION           = data.aws_region.current.name
-    EVENTBRIDGE_BUS_NAME        = module.eventbridge.bus_name
-    WEBSOCKETS_ENABLED          = "false"
+    # public first: directus_app's own tables live there (migration
+    # 20260101000015_directus_use_public_schema.sql) and the knex/pg
+    # search_path convention resolves unqualified names against the
+    # first matching schema in list order. catalog/staging/discovery
+    # added so Directus's schema introspection (@directus/schema) can
+    # see works/books/staging_books/etc - these tables were never
+    # moved to public (catalog.*/staging.*/discovery.* are referenced
+    # by fully-qualified name throughout api-catalog/api-search/
+    # api-commerce/discovery.sql, unlike directus_app's own tables
+    # which nothing else in this repo touches). Untested whether this
+    # actually works - README.md documents the *reverse* case (public
+    # added as a fallback alongside directus) still failing to fix
+    # Directus's own cross-schema introspection gap, so this may not
+    # hold either; it's the cheap thing to try before building
+    # public-schema views that mirror these tables.
+    DB_SEARCH_PATH       = "public,catalog,staging,discovery"
+    PUBLIC_URL           = "https://directus.${var.domain_name}"
+    ADMIN_EMAIL          = module.secrets_manager.directus_admin_email
+    STORAGE_LOCATIONS    = "s3"
+    STORAGE_S3_DRIVER    = "s3"
+    STORAGE_S3_BUCKET    = module.s3.bucket_id
+    STORAGE_S3_REGION    = data.aws_region.current.name
+    EVENTBRIDGE_BUS_NAME = module.eventbridge.bus_name
+    WEBSOCKETS_ENABLED   = "false"
   }
 
   secrets = {

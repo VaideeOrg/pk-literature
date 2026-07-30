@@ -215,7 +215,15 @@ export class StagingBooksService {
       .values({
         stagingBookId,
         sourceUrl: cover.sourceUrl,
-        status: "downloaded",
+        // 'uploaded', not 'downloaded': storeStagingCover() above has
+        // already PutObject'd the bytes to S3 by this point - there's no
+        // virus-scan/optimize/thumbnail worker in this repo to advance
+        // the status any further (media-storage.service.ts's own header
+        // comment), so 'uploaded' is the correct terminal status for what
+        // this phase actually does. Leaving it at 'downloaded' silently
+        // orphaned every cover: promote-staging-book's promoteMedia()
+        // only ever looks for status = 'uploaded'.
+        status: "uploaded",
         s3Key,
         checksumSha256,
       })

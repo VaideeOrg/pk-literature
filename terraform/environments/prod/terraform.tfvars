@@ -30,8 +30,10 @@ existing_nat_gateway_ids                 = []                                   
 # once its state entry collided with an unrelated resource's rule ID.
 existing_interface_endpoint_sg_ids = ["sg-0893b4a98e0b5a7c9"]
 
-# Flipped false: reopening the storefront to verify the mobile nav,
-# /browse page, and homepage banner live. This comment previously
-# claimed the value below was already false while it actually read
-# true - the two had drifted out of sync; this edit fixes both at once.
-coming_soon_mode = false
+# Flipped back to true: cover images are still broken (live debugging
+# paused, see terraform/modules/cloudfront-web's own comments on the
+# image origin for the current state) and there was also a real
+# site-wide outage from PR #102/#103's CloudFront OAC churn - hiding
+# the storefront again until covers actually work and the dust has
+# settled, rather than leaving a visibly broken site up.
+coming_soon_mode = true

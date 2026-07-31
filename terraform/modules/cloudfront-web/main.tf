@@ -30,15 +30,28 @@ resource "aws_cloudfront_origin_access_control" "server_lambda" {
   signing_protocol                  = "sigv4"
 }
 
-# No OAC for the image origin — its Function URL is authorization_type
-# = NONE (public), not AWS_IAM (modules/opennext's own comment on
-# aws_lambda_function_url.image has the full story: a live incident
-# left every /_next/image request 403ing at the Function URL's own
-# auth layer despite every piece of the OAC/IAM chain independently
-# verifying correct, so this was dropped as a pragmatic unblock rather
-# than left broken). OAC's SigV4 signing has nothing to authenticate
-# against on a public origin, so there's no origin_access_control_id
-# on that origin block below, unlike the still-AWS_IAM server origin.
+# Unused — deliberately kept around rather than deleted. The image
+# origin's Function URL is authorization_type = "NONE" (public) now,
+# not AWS_IAM (modules/opennext's own comment on
+# aws_lambda_function_url.image has the full story), so nothing
+# references this OAC's id anymore. A first attempt actually removed
+# this resource outright, which immediately broke the ENTIRE site
+# (server origin included) for the length of two separate failed
+# applies: deleting an OAC in the same apply as removing its last
+# reference races CloudFront's own internal detachment, and it
+# deterministically 409'd both times with "OriginAccessControlInUse"
+# before Terraform ever reached the distribution update that actually
+# needed to happen — the whole apply aborts on that one fatal error, so
+# nothing else in the run (including the fix) got applied either. Kept
+# declared-but-unreferenced here instead; safe to actually delete in a
+# later, standalone apply once there's no risk of it blocking anything
+# load-bearing in the same run.
+resource "aws_cloudfront_origin_access_control" "image_lambda" {
+  name                              = "pk-literature-${var.environment}-web-image"
+  origin_access_control_origin_type = "lambda"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
 
 # AWS-managed policy, looked up by name rather than hardcoded ID so
 # this doesn't depend on getting a UUID right from memory. Used by the

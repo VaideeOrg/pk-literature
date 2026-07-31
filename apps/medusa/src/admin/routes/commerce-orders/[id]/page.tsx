@@ -5,6 +5,7 @@ interface OrderDetail {
   id: string;
   orderNumber: string;
   status: string;
+  channel: string;
   subtotal: string;
   shippingCost: string;
   total: string;
@@ -30,6 +31,12 @@ interface Address {
   country: string;
   phone: string;
 }
+
+const CHANNEL_LABELS: Record<string, string> = {
+  online: "Online",
+  store_erode: "Erode",
+  store_perundurai: "Perundurai",
+};
 
 const STATUS_OPTIONS = [
   "draft",
@@ -142,7 +149,8 @@ function CommerceOrderDetailPage() {
       <div>
         <h1 style={{ fontSize: 20, fontWeight: 600 }}>Order {order.orderNumber}</h1>
         <p style={{ color: "#666", fontSize: 13 }}>
-          {order.contactEmail ?? "—"} · {order.contactPhone ?? "—"} · placed {new Date(order.createdAt).toLocaleString()}
+          {CHANNEL_LABELS[order.channel] ?? order.channel} · {order.contactEmail ?? "—"} · {order.contactPhone ?? "—"} ·
+          placed {new Date(order.createdAt).toLocaleString()}
         </p>
       </div>
 

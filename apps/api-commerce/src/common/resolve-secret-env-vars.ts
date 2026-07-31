@@ -17,6 +17,10 @@ const SECRET_ARN_ENV_VARS: Record<string, string> = {
   RAZORPAY_KEY_ID: "RAZORPAY_KEY_ID_SECRET_ARN",
   RAZORPAY_KEY_SECRET: "RAZORPAY_KEY_SECRET_SECRET_ARN",
   RAZORPAY_WEBHOOK_SECRET: "RAZORPAY_WEBHOOK_SECRET_SECRET_ARN",
+  // Read by inventory-sync-handler.ts, not src/lambda.ts's own HTTP
+  // handler - included here anyway since both entry points share this
+  // one resolver rather than each maintaining its own copy.
+  INVENTORY_WEBHOOK_SECRET: "INVENTORY_WEBHOOK_SECRET_SECRET_ARN",
 };
 
 export async function resolveSecretEnvVars(): Promise<void> {

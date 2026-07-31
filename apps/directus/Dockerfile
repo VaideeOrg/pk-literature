@@ -89,9 +89,18 @@ RUN npm install
 COPY extensions/operations/promote-staging-book/ ./
 RUN npm run build
 
+FROM node:20-bookworm-slim AS extension-build-decrement
+WORKDIR /build
+COPY extensions/operations/decrement-inventory-stock/package.json ./
+RUN npm install
+COPY extensions/operations/decrement-inventory-stock/ ./
+RUN npm run build
+
 FROM directus/directus:${DIRECTUS_VERSION}
 COPY --from=extension-build /build/dist /directus/extensions/eventbridge-put-event/dist
 COPY --from=extension-build /build/package.json /directus/extensions/eventbridge-put-event/package.json
 COPY --from=extension-build /build/rds-ca-bundle.pem /directus/rds-ca-bundle.pem
 COPY --from=extension-build-promote /build/dist /directus/extensions/promote-staging-book/dist
 COPY --from=extension-build-promote /build/package.json /directus/extensions/promote-staging-book/package.json
+COPY --from=extension-build-decrement /build/dist /directus/extensions/decrement-inventory-stock/dist
+COPY --from=extension-build-decrement /build/package.json /directus/extensions/decrement-inventory-stock/package.json

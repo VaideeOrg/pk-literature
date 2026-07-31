@@ -248,3 +248,83 @@ resource "aws_lambda_permission" "eventbridge_invoke_user_registered_consumer" {
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.user_registered.arn
 }
+
+# ---------------------------------------------------------------------
+# "Three types of orders" work: InventoryDecrementRequested consumer
+# (packages/contracts/src/events.ts). A FOURTH Lambda entry point in
+# this same deployment package (dist/src/inventory-sync-handler.handler)
+# - stateless, no database connection at all, unlike the
+# UserRegistered consumer above. catalog.inventory only ever gets
+# written through Directus (SPEC-03) - this Lambda just relays each
+# event's line items to Directus's decrement-inventory-stock webhook
+# Flow over HTTP, so private-nat tier (lambda_egress_sg), same as
+# lambda_api_commerce above, not private-isolated like the
+# UserRegistered consumer - it needs real internet egress to reach
+# directus.<domain> (a public ALB, not VPC-internal).
+#
+# Consumes from BOTH apps/api-commerce (this same service, online
+# orders - payments.service.ts's payment.captured handler) and
+# apps/medusa (walk-in store orders) - the event_pattern below matches
+# on detail-type only, not source, deliberately.
+# ---------------------------------------------------------------------
+
+data "aws_iam_policy_document" "api_commerce_inventory_sync_consumer_task" {
+  statement {
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [module.secrets_manager.inventory_webhook_secret_secret_arn]
+  }
+}
+
+module "lambda_api_commerce_inventory_sync_consumer" {
+  source = "../../modules/lambda-service"
+
+  environment  = "prod"
+  service_name = "api-commerce-inventory-sync-consumer"
+
+  filename         = local.api_commerce_zip
+  source_code_hash = filebase64sha256(local.api_commerce_zip)
+  artifact_bucket  = module.lambda_artifacts.bucket_id
+  handler          = "dist/src/inventory-sync-handler.handler"
+  runtime          = "nodejs20.x"
+  memory_size      = 256
+  timeout          = 10
+
+  subnet_ids         = module.vpc.private_nat_subnet_ids
+  security_group_ids = [module.security_groups.lambda_egress_sg_id]
+
+  environment_variables = {
+    DIRECTUS_URL = "https://directus.${var.domain_name}"
+    # Fixed id assigned in apps/directus/scripts/bootstrap.ts's
+    # ensureInventoryDecrementFlow() - see that function's own comment
+    # for why a fixed id, not a runtime lookup, is required here.
+    INVENTORY_DECREMENT_FLOW_ID         = "39bac6a4-b6c2-4c82-a14f-0231735c0cc4"
+    INVENTORY_WEBHOOK_SECRET_SECRET_ARN = module.secrets_manager.inventory_webhook_secret_secret_arn
+  }
+
+  additional_policy_json   = data.aws_iam_policy_document.api_commerce_inventory_sync_consumer_task.json
+  attach_additional_policy = true
+}
+
+resource "aws_cloudwatch_event_rule" "inventory_decrement_requested" {
+  name           = "pk-literature-prod-inventory-decrement-requested"
+  event_bus_name = module.eventbridge.bus_name
+  event_pattern = jsonencode({
+    detail-type = ["InventoryDecrementRequested"]
+  })
+}
+
+resource "aws_cloudwatch_event_target" "inventory_decrement_requested_to_consumer" {
+  rule           = aws_cloudwatch_event_rule.inventory_decrement_requested.name
+  event_bus_name = module.eventbridge.bus_name
+  arn            = module.lambda_api_commerce_inventory_sync_consumer.alias_arn
+}
+
+resource "aws_lambda_permission" "eventbridge_invoke_inventory_sync_consumer" {
+  statement_id  = "AllowEventBridgeInvokeInventorySyncConsumer"
+  action        = "lambda:InvokeFunction"
+  function_name = module.lambda_api_commerce_inventory_sync_consumer.function_name
+  qualifier     = module.lambda_api_commerce_inventory_sync_consumer.alias_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.inventory_decrement_requested.arn
+}

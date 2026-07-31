@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import type { Kysely } from "kysely";
-import type { OrderPaidEvent } from "@pk-literature/contracts";
+import type { InventoryDecrementRequestedEvent, OrderPaidEvent } from "@pk-literature/contracts";
 import { KYSELY } from "../database/database.module";
 import type { Database } from "../database/database.types";
 import { NotFoundProblem, ValidationProblem } from "../common/problem-details.exception";
@@ -130,6 +130,20 @@ export class PaymentsService {
 
       const event: OrderPaidEvent = { orderId: payment.orderId, paymentId: payment.id };
       await this.events.publish("OrderPaid", event);
+
+      // catalog.inventory only ever gets written through Directus
+      // (SPEC-03) - commerce_api_rw is deliberately read-only on
+      // catalog (commerce_api_role.sql's own comment: "never a write").
+      // This event carries the line items directly so the consumer
+      // (a Lambda calling Directus's decrement-inventory-stock
+      // operation) needs no database access of its own.
+      const items = await this.db
+        .selectFrom("commerce.orderItems")
+        .select(["bookId", "quantity"])
+        .where("orderId", "=", payment.orderId)
+        .execute();
+      const decrementEvent: InventoryDecrementRequestedEvent = { orderId: payment.orderId, channel: "online", items };
+      await this.events.publish("InventoryDecrementRequested", decrementEvent);
       return;
     }
 

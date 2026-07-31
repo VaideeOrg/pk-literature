@@ -168,6 +168,37 @@ resource "aws_secretsmanager_secret_version" "directus_secret" {
   secret_string = random_password.directus_secret.result
 }
 
+# Fully Terraform-generated (unlike razorpay's trio above) — no
+# third-party issues this one, so no placeholder-until-a-human-sets-it
+# dance. Shared between Directus's own decrement-inventory-stock
+# operation (reads it as an env var, compares it against the request
+# body) and lambda-api-commerce's inventory-sync-consumer (reads it as
+# an env var, sends it in the request body) — the same "shared secret
+# in Secrets Manager, injected as an env var, compared server-side"
+# pattern payments.controller.ts's RAZORPAY_WEBHOOK_SECRET already
+# uses, chosen specifically because Directus's webhook-trigger Flow
+# endpoints are reachable without authentication by design (that's
+# their whole purpose — accepting arbitrary third-party webhooks), so
+# something has to gate who's actually allowed to decrement stock.
+resource "random_password" "inventory_webhook_secret" {
+  length  = 32
+  special = false
+}
+
+resource "aws_secretsmanager_secret" "inventory_webhook_secret" {
+  name        = "/pk-literature/${var.environment}/inventory/webhook-secret"
+  description = "Shared secret gating apps/directus's decrement-inventory-stock webhook Flow — checked against the request body, not Directus's own accountability/role system (operation extensions run with Directus's own DB connection regardless of caller identity)."
+
+  tags = {
+    Environment = var.environment
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "inventory_webhook_secret" {
+  secret_id     = aws_secretsmanager_secret.inventory_webhook_secret.id
+  secret_string = random_password.inventory_webhook_secret.result
+}
+
 resource "random_password" "directus_admin" {
   length           = 32
   special          = true

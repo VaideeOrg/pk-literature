@@ -19,6 +19,7 @@ export type OrderStatus =
   | "cancelled"
   | "refunded"
   | "returned";
+export type OrderChannel = "online" | "store_erode" | "store_perundurai";
 export type PaymentStatus = "created" | "captured" | "failed" | "refunded";
 export type ShipmentStatus = "pending" | "shipped" | "delivered";
 export type RefundStatus = "initiated" | "processed" | "failed";
@@ -72,6 +73,7 @@ export interface OrderTable {
   customerId: string | null;
   cartId: string | null;
   status: OrderStatus;
+  channel: Generated<OrderChannel>;
   subtotal: string;
   shippingCost: string;
   total: string;

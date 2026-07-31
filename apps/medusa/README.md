@@ -39,7 +39,13 @@ Medusa}").
   middleware — no separate auth wiring needed.
 - `src/admin/routes/commerce-orders/**` — custom Admin UI pages (list +
   detail, registered in the sidebar as "Store Orders" via
-  `defineRouteConfig`) that call the routes above.
+  `defineRouteConfig`) that call the routes above. The list page also
+  has a "Log walk-in sale" form, for the two physical stores (Erode,
+  Perundurai) — see "Three order channels" below.
+- `src/lib/eventbridge.ts` — publishes `InventoryDecrementRequested`
+  (same shape/pattern as `src/subscribers/eventbridge-order-placed.ts`'s
+  own client) when a walk-in sale is logged, consumed by
+  `apps/api-commerce`'s inventory-sync-consumer Lambda.
 
 ## Scope boundary — Medusa's own Order module still does not read/write `commerce.*`
 
@@ -76,6 +82,39 @@ nothing for an "initiate refund" button to trigger), and
 src/events.ts`) still have no publisher — this extension writes
 directly to Postgres, it doesn't go through `apps/api-commerce`'s own
 service layer or its event-publishing.
+
+## Three order channels
+
+`commerce.orders.channel` (migration `20260401000007_orders_channel.sql`)
+tags every order `online`, `store_erode`, or `store_perundurai`. Online
+orders are unchanged — `apps/api-commerce`'s checkout flow, tagged
+`online` automatically. A walk-in sale at either physical store has no
+cart/checkout/Razorpay moment at all — it's logged after the fact via
+this app's "Log walk-in sale" form, which lands the order straight at
+`completed` with no shipping cost.
+
+Both channels share one `catalog.inventory.stock` pool, decremented
+through the same path: `InventoryDecrementRequestedEvent`
+(`packages/contracts/src/events.ts`) → `apps/api-commerce`'s
+inventory-sync-consumer Lambda (subscribed regardless of which service
+published the event) → `POST /flows/trigger/<flow-id>` against
+`apps/directus`'s `decrement-inventory-stock` Flow, gated by a shared
+secret (`INVENTORY_WEBHOOK_SECRET`) rather than Directus's own
+accountability system, since webhook-trigger Flow endpoints are
+reachable without authentication by design. This keeps "Directus is
+the sole write path into `catalog`" (SPEC-03) true for stock writes
+from *both* channels — `medusa_app`'s own catalog grant (migration
+`20260401000008_medusa_app_catalog_read.sql`) is read-only, the same
+constraint `commerce_api_rw` has always had.
+
+**UNVERIFIED**: the webhook Flow's exact `$trigger.body` shape (see
+`bootstrap.ts`'s `ensureInventoryDecrementFlow` doc comment) — this
+repo has only ever live-confirmed an *event*-trigger's `$trigger` shape
+(the promotion Flow's condition filter saga), not a webhook trigger's.
+If the first real walk-in sale or online payment 4xxs/5xxs on the
+inventory-sync-consumer's Directus call, checking the Flow's actual
+`data` shape via a temporary Run Script operation (same technique used
+for the promotion Flow) is the fix.
 
 ## Known issue — resolved, now live-verified
 

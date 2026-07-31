@@ -203,6 +203,12 @@ module "ecs_directus" {
     KEY            = module.secrets_manager.directus_key_secret_arn
     SECRET         = module.secrets_manager.directus_secret_secret_arn
     ADMIN_PASSWORD = module.secrets_manager.directus_admin_password_secret_arn
+    # Read by the decrement-inventory-stock operation's own handler
+    # (context.env, same as eventbridge-put-event's STORAGE_S3_BUCKET
+    # read) - gates its webhook Flow, which is otherwise reachable
+    # without authentication by design. See secrets-manager module's
+    # inventory_webhook_secret comment.
+    INVENTORY_WEBHOOK_SECRET = module.secrets_manager.inventory_webhook_secret_secret_arn
   }
 
   additional_policy_json   = data.aws_iam_policy_document.directus_task.json

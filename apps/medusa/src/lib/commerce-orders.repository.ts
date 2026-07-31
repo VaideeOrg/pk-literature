@@ -24,6 +24,7 @@ export interface OrderListRow {
   id: string;
   orderNumber: string;
   status: OrderStatus;
+  channel: string;
   total: string;
   currency: string;
   contactEmail: string | null;
@@ -36,6 +37,7 @@ export interface OrderDetail {
   id: string;
   orderNumber: string;
   status: OrderStatus;
+  channel: string;
   subtotal: string;
   shippingCost: string;
   total: string;
@@ -66,6 +68,7 @@ interface AddressRow {
 
 export async function listOrders(params: {
   status?: string;
+  channel?: string;
   q?: string;
   limit: number;
   offset: number;
@@ -77,6 +80,10 @@ export async function listOrders(params: {
   if (params.status) {
     values.push(params.status);
     conditions.push(`o.status = $${values.length}`);
+  }
+  if (params.channel) {
+    values.push(params.channel);
+    conditions.push(`o.channel = $${values.length}`);
   }
   if (params.q) {
     values.push(`%${params.q}%`);
@@ -93,7 +100,7 @@ export async function listOrders(params: {
   const rowsResult = await db.query(
     `
     SELECT
-      o.id, o.order_number, o.status, o.total, o.currency,
+      o.id, o.order_number, o.status, o.channel, o.total, o.currency,
       o.contact_email, o.contact_phone, o.created_at,
       (SELECT count(*) FROM commerce.order_items oi WHERE oi.order_id = o.id) AS item_count
     FROM commerce.orders o
@@ -110,6 +117,7 @@ export async function listOrders(params: {
       id: r.id,
       orderNumber: r.order_number,
       status: r.status,
+      channel: r.channel,
       total: r.total,
       currency: r.currency,
       contactEmail: r.contact_email,
@@ -126,7 +134,7 @@ export async function getOrderDetail(id: string): Promise<OrderDetail | null> {
   const orderResult = await db.query(
     `
     SELECT
-      o.id, o.order_number, o.status, o.subtotal, o.shipping_cost, o.total,
+      o.id, o.order_number, o.status, o.channel, o.subtotal, o.shipping_cost, o.total,
       o.currency, o.contact_email, o.contact_phone, o.created_at, o.updated_at,
       o.shipping_address_id, o.billing_address_id
     FROM commerce.orders o
@@ -166,6 +174,7 @@ export async function getOrderDetail(id: string): Promise<OrderDetail | null> {
     id: order.id,
     orderNumber: order.order_number,
     status: order.status,
+    channel: order.channel,
     subtotal: order.subtotal,
     shippingCost: order.shipping_cost,
     total: order.total,
@@ -271,6 +280,98 @@ export async function createShipment(
     await client.query(`UPDATE commerce.orders SET status = 'shipped' WHERE id = $1`, [orderId]);
     await client.query("COMMIT");
     return { id: shipmentResult.rows[0].id };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// Mirrors commerce.order_channel exactly (apps/api-commerce/migrations/
+// 20260401000007_orders_channel.sql).
+export const ORDER_CHANNELS = ["online", "store_erode", "store_perundurai"] as const;
+export type OrderChannel = (typeof ORDER_CHANNELS)[number];
+
+export interface CatalogBookSearchRow {
+  id: string;
+  title: string;
+  isbn13: string | null;
+  price: string | null;
+  currency: string | null;
+  stock: number | null;
+}
+
+// Read-only against catalog (migration 20260401000008_medusa_app_catalog_read.sql)
+// - only ever used to populate the store-order creation form's book
+// picker and prefill a price, never written back to directly.
+export async function searchCatalogBooks(q: string, limit: number): Promise<CatalogBookSearchRow[]> {
+  const db = getCommerceDb();
+  const result = await db.query(
+    `
+    SELECT b.id, b.title, b.isbn13, i.price, i.currency, i.stock
+    FROM catalog.books b
+    LEFT JOIN catalog.inventory i ON i.book_id = b.id
+    WHERE b.status = 'published' AND (b.title ILIKE $1 OR b.isbn13 = $2)
+    ORDER BY b.title
+    LIMIT $3
+    `,
+    [`%${q}%`, q, limit],
+  );
+  return result.rows;
+}
+
+export interface CreateStoreOrderInput {
+  channel: Exclude<OrderChannel, "online">;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  items: { bookId: string; titleSnapshot: string; unitPrice: number; currency: string; quantity: number }[];
+}
+
+// A walk-in sale, logged by a store keeper after the fact - already
+// paid for in person, so this skips cart/checkout/Razorpay entirely
+// and lands straight at 'completed' (no packed/shipped/delivered
+// steps for a customer who already walked out with the book). No
+// shipping cost - nothing is being shipped.
+export async function createStoreOrder(
+  input: CreateStoreOrderInput,
+): Promise<{ id: string; orderNumber: string; items: { bookId: string; quantity: number }[] }> {
+  if (input.items.length === 0) {
+    throw new Error("A store order needs at least one item.");
+  }
+
+  const db = getCommerceDb();
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+
+    const currency = input.items[0]!.currency;
+    const subtotal = input.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+    const orderNumber = `ORD-${Math.random().toString(16).slice(2, 10).toUpperCase()}`;
+
+    const orderResult = await client.query(
+      `
+      INSERT INTO commerce.orders (order_number, status, channel, subtotal, shipping_cost, total, currency, contact_email, contact_phone)
+      VALUES ($1, 'completed', $2, $3, 0, $3, $4, $5, $6)
+      RETURNING id, order_number
+      `,
+      [orderNumber, input.channel, subtotal, currency, input.contactEmail, input.contactPhone],
+    );
+    const order = orderResult.rows[0];
+
+    for (const item of input.items) {
+      await client.query(
+        `INSERT INTO commerce.order_items (order_id, book_id, title_snapshot, unit_price, currency, quantity) VALUES ($1, $2, $3, $4, $5, $6)`,
+        [order.id, item.bookId, item.titleSnapshot, item.unitPrice, item.currency, item.quantity],
+      );
+    }
+
+    await client.query("COMMIT");
+    return {
+      id: order.id,
+      orderNumber: order.order_number,
+      items: input.items.map((i) => ({ bookId: i.bookId, quantity: i.quantity })),
+    };
   } catch (err) {
     await client.query("ROLLBACK");
     throw err;

@@ -30,7 +30,8 @@ existing_nat_gateway_ids                 = []                                   
 # once its state entry collided with an unrelated resource's rule ID.
 existing_interface_endpoint_sg_ids = ["sg-0893b4a98e0b5a7c9"]
 
-# Flipped back to true: gating the storefront again while inventory/
-# cover-image issues (empty covers, out-of-stock inventory on newly
-# promoted books) get sorted out - see variables.tf.
-coming_soon_mode = true
+# Flipped false again: real Razorpay credentials are now in place
+# (secrets.md's /prod/razorpay/* trio + RAZORPAY_KEY_ID_PROD GH
+# variable) - reopening the storefront to test the cart -> checkout ->
+# payment -> order workflow end-to-end. See variables.tf.
+coming_soon_mode = false

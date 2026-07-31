@@ -30,17 +30,19 @@ resource "aws_cloudfront_origin_access_control" "server_lambda" {
   signing_protocol                  = "sigv4"
 }
 
-resource "aws_cloudfront_origin_access_control" "image_lambda" {
-  name                              = "pk-literature-${var.environment}-web-image"
-  origin_access_control_origin_type = "lambda"
-  signing_behavior                  = "always"
-  signing_protocol                  = "sigv4"
-}
+# No OAC for the image origin — its Function URL is authorization_type
+# = NONE (public), not AWS_IAM (modules/opennext's own comment on
+# aws_lambda_function_url.image has the full story: a live incident
+# left every /_next/image request 403ing at the Function URL's own
+# auth layer despite every piece of the OAC/IAM chain independently
+# verifying correct, so this was dropped as a pragmatic unblock rather
+# than left broken). OAC's SigV4 signing has nothing to authenticate
+# against on a public origin, so there's no origin_access_control_id
+# on that origin block below, unlike the still-AWS_IAM server origin.
 
-# AWS-managed policies, looked up by name rather than hardcoded ID so
-# this doesn't depend on getting a UUID right from memory. all_viewer_
-# except_host is used by BOTH Lambda-Function-URL-behind-OAC origins
-# below (server AND image) — see the server default_cache_behavior's
+# AWS-managed policy, looked up by name rather than hardcoded ID so
+# this doesn't depend on getting a UUID right from memory. Used by the
+# server origin's default_cache_behavior below — see that block's
 # comment for why a request forwarded via the legacy forwarded_values
 # API (which always includes Host) breaks OAC's SigV4 signing.
 data "aws_cloudfront_cache_policy" "caching_disabled" {
@@ -111,9 +113,8 @@ resource "aws_cloudfront_distribution" "this" {
   }
 
   origin {
-    domain_name              = var.image_function_url_domain
-    origin_id                = local.image_origin_id
-    origin_access_control_id = aws_cloudfront_origin_access_control.image_lambda.id
+    domain_name = var.image_function_url_domain
+    origin_id   = local.image_origin_id
 
     custom_origin_config {
       http_port                = 80
@@ -184,17 +185,12 @@ resource "aws_cloudfront_distribution" "this" {
   # next/image requests carry the source path + w/q resize params as a
   # query string and negotiate format via Accept — both need forwarding
   # for a correctly-resized, correctly-formatted response, but no
-  # cookies (image bytes don't vary per visitor here).
-  #
-  # Same OAC-signing constraint as the server origin above: this used to
-  # forward query strings/headers via the legacy forwarded_values API,
-  # which always includes the Host header and breaks SigV4 signing for
-  # an OAC-signed Lambda Function URL origin — confirmed live by a real
-  # `{"Message":"Forbidden. For troubleshooting Function URL
-  # authorization issues..."}` response straight from the Function URL.
-  # Fixed the same way: cache_policy_id + origin_request_policy_id
-  # instead of forwarded_values (see image_optimization cache policy and
-  # all_viewer_except_host data source above).
+  # cookies (image bytes don't vary per visitor here). Uses the same
+  # modern cache-policy/origin-request-policy resources as the server
+  # origin - not required here the way it is for that OAC-signed origin
+  # (this origin is public, see aws_lambda_function_url.image's own
+  # comment for why), just kept for consistency since it expresses the
+  # same forwarding rules the old forwarded_values block did.
   ordered_cache_behavior {
     path_pattern             = "/_next/image"
     target_origin_id         = local.image_origin_id
@@ -264,22 +260,16 @@ resource "aws_s3_bucket_policy" "static_assets_oac" {
 
 # Lambda Function URL OAC — the equivalent of the S3 bucket policy
 # above, but granting CloudFront's service principal
-# lambda:InvokeFunctionUrl instead of s3:GetObject. Function URLs were
-# created with authorization_type = "AWS_IAM" (modules/opennext), so
-# without this, CloudFront's signed OAC requests would be rejected.
+# lambda:InvokeFunctionUrl instead of s3:GetObject. The server Function
+# URL was created with authorization_type = "AWS_IAM" (modules/opennext),
+# so without this, CloudFront's signed OAC requests would be rejected.
+# No equivalent permission for the image origin - its Function URL is
+# authorization_type = "NONE" (public), which needs no invoke grant at
+# all; see aws_lambda_function_url.image's own comment for why.
 resource "aws_lambda_permission" "cloudfront_invoke_server" {
   statement_id           = "AllowCloudFrontServicePrincipal"
   action                 = "lambda:InvokeFunctionUrl"
   function_name          = var.server_function_arn
-  principal              = "cloudfront.amazonaws.com"
-  source_arn             = aws_cloudfront_distribution.this.arn
-  function_url_auth_type = "AWS_IAM"
-}
-
-resource "aws_lambda_permission" "cloudfront_invoke_image" {
-  statement_id           = "AllowCloudFrontServicePrincipal"
-  action                 = "lambda:InvokeFunctionUrl"
-  function_name          = var.image_function_arn
   principal              = "cloudfront.amazonaws.com"
   source_arn             = aws_cloudfront_distribution.this.arn
   function_url_auth_type = "AWS_IAM"

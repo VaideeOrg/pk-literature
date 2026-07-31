@@ -38,16 +38,49 @@ resource "aws_cloudfront_origin_access_control" "image_lambda" {
 }
 
 # AWS-managed policies, looked up by name rather than hardcoded ID so
-# this doesn't depend on getting a UUID right from memory. Used only by
-# the server Lambda origin's default_cache_behavior below — see that
-# block's comment for why a Lambda-Function-URL-behind-OAC origin needs
-# these specifically instead of the legacy forwarded_values API.
+# this doesn't depend on getting a UUID right from memory. all_viewer_
+# except_host is used by BOTH Lambda-Function-URL-behind-OAC origins
+# below (server AND image) — see the server default_cache_behavior's
+# comment for why a request forwarded via the legacy forwarded_values
+# API (which always includes Host) breaks OAC's SigV4 signing.
 data "aws_cloudfront_cache_policy" "caching_disabled" {
   name = "Managed-CachingDisabled"
 }
 
 data "aws_cloudfront_origin_request_policy" "all_viewer_except_host" {
   name = "Managed-AllViewerExceptHostHeader"
+}
+
+# The image Lambda's own cache policy — can't reuse caching_disabled
+# above since /_next/image responses genuinely benefit from edge
+# caching (unlike the server origin, every response here is a pure
+# function of its query string), but the legacy forwarded_values API
+# this replaced can't be used for an OAC-signed origin (see above), so
+# TTLs/query-string/Accept-header forwarding all have to be expressed
+# through this resource instead of that block's own min/default/max_ttl
+# + forwarded_values arguments.
+resource "aws_cloudfront_cache_policy" "image_optimization" {
+  name        = "pk-literature-${var.environment}-web-image"
+  min_ttl     = 0
+  default_ttl = 3600
+  max_ttl     = 86400
+
+  parameters_in_cache_key_and_forwarded_to_origin {
+    cookies_config {
+      cookie_behavior = "none"
+    }
+    headers_config {
+      header_behavior = "whitelist"
+      headers {
+        items = ["Accept"]
+      }
+    }
+    query_strings_config {
+      query_string_behavior = "all"
+    }
+    enable_accept_encoding_gzip   = true
+    enable_accept_encoding_brotli = true
+  }
 }
 
 resource "aws_cloudfront_distribution" "this" {
@@ -152,25 +185,25 @@ resource "aws_cloudfront_distribution" "this" {
   # query string and negotiate format via Accept — both need forwarding
   # for a correctly-resized, correctly-formatted response, but no
   # cookies (image bytes don't vary per visitor here).
+  #
+  # Same OAC-signing constraint as the server origin above: this used to
+  # forward query strings/headers via the legacy forwarded_values API,
+  # which always includes the Host header and breaks SigV4 signing for
+  # an OAC-signed Lambda Function URL origin — confirmed live by a real
+  # `{"Message":"Forbidden. For troubleshooting Function URL
+  # authorization issues..."}` response straight from the Function URL.
+  # Fixed the same way: cache_policy_id + origin_request_policy_id
+  # instead of forwarded_values (see image_optimization cache policy and
+  # all_viewer_except_host data source above).
   ordered_cache_behavior {
-    path_pattern           = "/_next/image"
-    target_origin_id       = local.image_origin_id
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD"]
-    cached_methods         = ["GET", "HEAD"]
-    compress               = true
-
-    forwarded_values {
-      query_string = true
-      headers      = ["Accept"]
-      cookies {
-        forward = "none"
-      }
-    }
-
-    min_ttl     = 0
-    default_ttl = 3600
-    max_ttl     = 86400
+    path_pattern             = "/_next/image"
+    target_origin_id         = local.image_origin_id
+    viewer_protocol_policy   = "redirect-to-https"
+    allowed_methods          = ["GET", "HEAD"]
+    cached_methods           = ["GET", "HEAD"]
+    compress                 = true
+    cache_policy_id          = aws_cloudfront_cache_policy.image_optimization.id
+    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer_except_host.id
   }
 
   restrictions {

@@ -89,8 +89,27 @@ module "image_lambda" {
   architectures = ["arm64"]
 }
 
+# NONE, not AWS_IAM like the server function url above — deliberate,
+# documented deviation. This was AWS_IAM + CloudFront OAC originally
+# (matching the server origin's pattern), but a live incident left
+# every /_next/image request 403ing with a raw Lambda Function URL
+# "AccessDeniedException" with no CloudWatch log line at all (the
+# request never reached the function code — rejected at the Function
+# URL's own auth layer). Every piece of the OAC/IAM chain was
+# independently verified correct live (resource policy statement,
+# SourceArn, FunctionUrlAuthType condition, qualifier match between the
+# permission and the Function URL, OAC signing behavior) and matched
+# the server origin's own already-proven-working setup exactly, byte
+# for byte - yet it still failed, and no further AWS-side cause was
+# found (CloudTrail data events weren't checked before this was applied
+# as the pragmatic fix). Public is an acceptable tradeoff for this one
+# origin specifically: it only resizes already-public cover images
+# pulled from the public media CDN, so an unauthenticated caller could
+# at worst waste invocations directly against the raw URL, not reach
+# anything sensitive. Revisit AWS_IAM + OAC later via CloudTrail if
+# tightening this back up matters.
 resource "aws_lambda_function_url" "image" {
   function_name      = module.image_lambda.function_name
   qualifier          = module.image_lambda.alias_name
-  authorization_type = "AWS_IAM"
+  authorization_type = "NONE"
 }

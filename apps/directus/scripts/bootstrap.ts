@@ -150,6 +150,7 @@ async function main() {
 	await ensureRoleWithPolicy(client, 'Catalog Editor', catalogEditorPolicyId);
 	await ensureRoleWithPolicy(client, 'Senior Editor', seniorEditorPolicyId);
 	await ensurePromotionFlow(client);
+	await ensureInventoryDecrementFlow(client);
 
 	console.log('Directus bootstrap complete.');
 }
@@ -390,6 +391,87 @@ async function ensurePromotionFlow(client: Client) {
 	await client.request(updateOperation(conditionOperation.id, { resolve: promoteOperation.id }));
 	await client.request(updateFlow(flow.id, { operation: conditionOperation.id }));
 	console.log(`flow ${FLOW_NAME}: wired (trigger -> status_is_approved -> promote_to_catalog)`);
+}
+
+/**
+ * Webhook-triggered, not event-triggered like ensurePromotionFlow -
+ * this Flow has no staging_books/catalog collection change to react
+ * to; it's invoked directly (POST /flows/trigger/<flow-id>) by
+ * apps/api-commerce's inventory-sync-consumer Lambda (online orders)
+ * and apps/medusa's store-order creation route (walk-in orders) - see
+ * packages/contracts/src/events.ts's InventoryDecrementRequestedEvent.
+ *
+ * UNVERIFIED, more so than ensurePromotionFlow's own webhook-adjacent
+ * pieces: this repo has only ever live-confirmed an event-trigger's
+ * `data` shape (`{ $trigger: { event, payload, keys, collection },
+ * ... }, via the Run Script echo test documented on that function).
+ * A webhook trigger's `$trigger` is assumed by direct analogy (and
+ * Directus's public docs) to carry `{ body, headers, query, method,
+ * ... }` instead of `{ event, payload, keys, collection }` - `{{$trigger.
+ * body.items}}`/`{{$trigger.body.secret}}` below are written against
+ * that assumption, not independently confirmed live the way the
+ * promotion Flow's condition filter eventually was. Treat this the
+ * same way: if the deployed Flow errors on first real invocation,
+ * checking `$trigger`'s actual shape via a temporary Run Script
+ * operation (same technique used to resolve the promotion Flow's
+ * filter) is the fix, not further guessing.
+ *
+ * Created with a fixed id (INVENTORY_DECREMENT_FLOW_ID below), unlike
+ * ensurePromotionFlow's flow - that one only needs its own id to wire
+ * its own operations together, entirely within this script. This
+ * flow's id is also needed by two things this script has no relation
+ * to: apps/api-commerce's inventory-sync-handler.ts and apps/medusa's
+ * store-order route both call POST /flows/trigger/<flow-id> directly,
+ * and their own INVENTORY_DECREMENT_FLOW_ID env var (terraform/
+ * environments/prod/api-commerce.tf, medusa.tf) is set at `terraform
+ * apply` time - before this bootstrap script has ever run, so there's
+ * no "look up the id Directus generated" step available to them. A
+ * fixed id sidesteps that ordering problem entirely.
+ */
+const INVENTORY_DECREMENT_FLOW_ID = '39bac6a4-b6c2-4c82-a14f-0231735c0cc4';
+
+async function ensureInventoryDecrementFlow(client: Client) {
+	const FLOW_NAME = 'Decrement Inventory Stock';
+	const existingFlows = await client.request(readFlows({ filter: { name: { _eq: FLOW_NAME } } }));
+	if (existingFlows[0]) {
+		console.log(`flow ${FLOW_NAME}: already exists`);
+		return;
+	}
+
+	const flow = await client.request(
+		createFlow({
+			id: INVENTORY_DECREMENT_FLOW_ID,
+			name: FLOW_NAME,
+			icon: 'remove_shopping_cart',
+			description:
+				"Decrements catalog.inventory.stock for a list of {bookId, quantity} items. Triggered by a webhook - see extensions/operations/decrement-inventory-stock and packages/contracts/src/events.ts's InventoryDecrementRequestedEvent.",
+			status: 'active',
+			trigger: 'webhook',
+			accountability: 'all',
+			options: {
+				method: 'POST',
+			},
+		}),
+	);
+	console.log(`flow ${FLOW_NAME}: created`);
+
+	const decrementOperation = await client.request(
+		createOperation({
+			name: 'Decrement stock',
+			key: 'decrement_stock',
+			type: 'decrement-inventory-stock',
+			position_x: 19,
+			position_y: 1,
+			flow: flow.id,
+			options: {
+				secret: '{{$trigger.body.secret}}',
+				items: '{{$trigger.body.items}}',
+			},
+		}),
+	);
+
+	await client.request(updateFlow(flow.id, { operation: decrementOperation.id }));
+	console.log(`flow ${FLOW_NAME}: wired (webhook -> decrement_stock)`);
 }
 
 async function ensurePermission(

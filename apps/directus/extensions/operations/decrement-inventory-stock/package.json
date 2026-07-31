@@ -1,0 +1,29 @@
+{
+  "name": "directus-extension-decrement-inventory-stock",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Directus Flow operation: atomically decrement catalog.inventory.stock for a list of {bookId, quantity} line items, inside a single DB transaction, gated by a shared secret (not Directus's own accountability/role system - this runs with Directus's own DB connection regardless of caller identity, same as promote-staging-book). Triggered by a webhook Flow - see ../../../scripts/bootstrap.ts's ensureInventoryDecrementFlow() and packages/contracts/src/events.ts's InventoryDecrementRequestedEvent for the callers (apps/api-commerce's inventory-sync-consumer Lambda, apps/medusa's store-order creation route).",
+  "keywords": ["directus", "directus-extension", "directus-custom-operation"],
+  "directus:extension": {
+    "type": "operation",
+    "path": {
+      "app": "dist/app.js",
+      "api": "dist/api.js"
+    },
+    "source": {
+      "app": "src/app.ts",
+      "api": "src/api.ts"
+    },
+    "host": "^11.0.0 || ^12.0.0"
+  },
+  "scripts": {
+    "build": "directus-extension build",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@directus/extensions-sdk": "^12.1.0",
+    "@types/node": "^20.16.11",
+    "knex": "^3.1.0",
+    "typescript": "^5.6.3"
+  }
+}

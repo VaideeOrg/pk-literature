@@ -47,6 +47,10 @@ output "razorpay_webhook_secret_secret_arn" {
   value = aws_secretsmanager_secret.razorpay_webhook_secret.arn
 }
 
+output "inventory_webhook_secret_secret_arn" {
+  value = aws_secretsmanager_secret.inventory_webhook_secret.arn
+}
+
 output "medusa_db_username" {
   value = var.medusa_db_username
 }

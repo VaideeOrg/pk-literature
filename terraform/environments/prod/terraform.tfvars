@@ -34,4 +34,4 @@ existing_interface_endpoint_sg_ids = ["sg-0893b4a98e0b5a7c9"]
 # (secrets.md's /prod/razorpay/* trio + RAZORPAY_KEY_ID_PROD GH
 # variable) - reopening the storefront to test the cart -> checkout ->
 # payment -> order workflow end-to-end. See variables.tf.
-coming_soon_mode = false
+coming_soon_mode = true

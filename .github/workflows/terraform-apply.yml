@@ -161,7 +161,21 @@ jobs:
             apps/web/dist-server-lambda.zip
             apps/web/dist-image-lambda.zip
             apps/web/.open-next/assets
-          key: web-opennext-${{ hashFiles('apps/web/app/**', 'apps/web/src/**', 'apps/web/middleware.ts', 'apps/web/*.config.*', 'apps/web/package.json', 'apps/web/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/ui/src/**', 'packages/ui/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
+          # web-opennext-2, not web-opennext: bumped once, deliberately,
+          # to force a cache miss on every existing entry - this key used
+          # to hash only source files, not the NEXT_PUBLIC_* build-time
+          # values below, so a cache entry created before those env vars
+          # existed (or before RAZORPAY_KEY_ID_PROD was set) would keep
+          # being served forever with source unchanged, silently
+          # redeploying a client bundle that falls back to
+          # client-fetch.ts's http://localhost:3000 dev default - a real
+          # bug hit live (ERR_CONNECTION_REFUSED on every browser-side
+          # API call). RAZORPAY_KEY_ID_PROD is now folded into the key
+          # itself so rotating it naturally invalidates the cache too;
+          # the two hardcoded domain literals below aren't (GitHub
+          # Actions cache keys can't hash literal strings, only files) -
+          # bump this prefix again if either of those ever changes.
+          key: web-opennext-2-${{ vars.RAZORPAY_KEY_ID_PROD }}-${{ hashFiles('apps/web/app/**', 'apps/web/src/**', 'apps/web/middleware.ts', 'apps/web/*.config.*', 'apps/web/package.json', 'apps/web/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/ui/src/**', 'packages/ui/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
       # Next.js inlines NEXT_PUBLIC_* into the client bundle at `next
       # build` time (web.tf's own header comment already documented
       # this requirement - this step just never actually did it).
@@ -180,6 +194,11 @@ jobs:
       # RAZORPAY_KEY_ID is Razorpay's own publishable/public key
       # (not the key_secret), which is why this is a repo variable,
       # not a secret - same distinction apps/web/.env.example draws.
+      # Repo variable name is RAZORPAY_KEY_ID_PROD, not
+      # NEXT_PUBLIC_RAZORPAY_KEY_ID - an earlier mismatch here (created
+      # under the latter name, workflow read the former) silently
+      # resolved to an empty string with no error, shipping a bundle
+      # that showed "Payments are not configured" at checkout.
       - name: Build apps/web OpenNext packages
         if: steps.cache-web.outputs.cache-hit != 'true'
         env:

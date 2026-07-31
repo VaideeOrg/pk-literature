@@ -243,6 +243,27 @@ resource "aws_vpc_security_group_ingress_rule" "rds_proxy_from_ecs_medusa" {
   description                  = "Postgres from Medusa ECS task"
 }
 
+# api-commerce's Lambda sits in lambda_egress (private-nat tier, for
+# Razorpay's internet-facing API - api-commerce.tf's file header), not
+# lambda_db like every private-isolated Lambda - it needs its own
+# ingress rule here for the exact same reason ecs_directus/ecs_medusa
+# each needed theirs above (comment on rds_proxy_from_ecs_directus):
+# lambda_egress_to_rds_proxy below only covers its half of the
+# connection (egress out of lambda_egress), and without a matching
+# ingress rule here RDS Proxy silently drops the inbound attempt.
+# Missed when lambda_egress was first created - confirmed live via
+# api-commerce's own Lambda logs: Kysely/pg-pool's
+# AggregateError [ETIMEDOUT] acquiring a connection, the identical
+# symptom that surfaced the ecs_directus/ecs_medusa gap.
+resource "aws_vpc_security_group_ingress_rule" "rds_proxy_from_lambda_egress" {
+  security_group_id            = aws_security_group.rds_proxy.id
+  referenced_security_group_id = aws_security_group.lambda_egress.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  description                  = "Postgres from NAT-tier Lambda clients (api-commerce)"
+}
+
 resource "aws_vpc_security_group_ingress_rule" "rds_proxy_from_cloudshell" {
   security_group_id            = aws_security_group.rds_proxy.id
   referenced_security_group_id = aws_security_group.cloudshell_db_access.id

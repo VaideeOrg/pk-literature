@@ -12,10 +12,18 @@
 # section, same disclosed-limitation category as apps/directus's own
 # unverified boot.
 
+# --fetch-retries/--fetch-retry-*: @medusajs's dependency tree is large
+# enough (hundreds of packages) that a full `npm install` can run long
+# enough to trip registry.npmjs.org's own rate limiting - a real build
+# failure hit live ("npm error code E429 - 429 Too Many Requests - GET
+# .../@medusajs%2fjs-sdk", ~8 minutes into the install). npm's default
+# retry config (2 retries, up to 60s backoff) wasn't enough to ride out
+# that particular 429; more retries and a longer max backoff give a
+# sustained rate-limit window more room to clear before giving up.
 FROM node:20-bookworm-slim AS build
 WORKDIR /app
 COPY package.json ./
-RUN npm install
+RUN npm install --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 COPY medusa-config.ts tsconfig.json ./
 COPY src ./src
 RUN npx medusa build
@@ -23,7 +31,7 @@ RUN npx medusa build
 FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
 COPY --from=build /app/.medusa/server ./
-RUN npm install --omit=dev
+RUN npm install --omit=dev --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 
 ENV NODE_ENV=production
 EXPOSE 9000

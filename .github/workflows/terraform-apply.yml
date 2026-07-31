@@ -194,6 +194,11 @@ jobs:
       # RAZORPAY_KEY_ID is Razorpay's own publishable/public key
       # (not the key_secret), which is why this is a repo variable,
       # not a secret - same distinction apps/web/.env.example draws.
+      # Repo variable name is RAZORPAY_KEY_ID_PROD, not
+      # NEXT_PUBLIC_RAZORPAY_KEY_ID - an earlier mismatch here (created
+      # under the latter name, workflow read the former) silently
+      # resolved to an empty string with no error, shipping a bundle
+      # that showed "Payments are not configured" at checkout.
       - name: Build apps/web OpenNext packages
         if: steps.cache-web.outputs.cache-hit != 'true'
         env:

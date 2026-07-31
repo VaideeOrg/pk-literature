@@ -63,6 +63,25 @@ export interface OrderPaidEvent {
   paymentId: string;
 }
 
+// Published whenever an order's stock actually needs to come off
+// catalog.inventory - by apps/api-commerce on confirmed online payment
+// (payments.service.ts's payment.captured handler), and by apps/medusa
+// when a store keeper logs a walk-in sale (already paid for in person,
+// so no separate "payment captured" moment exists for that channel).
+// Carries the line items directly rather than just orderId so the
+// consumer (a Lambda calling into Directus - see apps/directus's
+// decrement-inventory-stock operation) needs no database access of its
+// own at all: catalog.inventory writes only ever happen through
+// Directus (SPEC-03, "Directus is the sole write path into catalog"),
+// the same constraint that shaped the staging->catalog promotion
+// pipeline - this event exists specifically so neither api-commerce
+// nor Medusa need a bypass grant to write there themselves.
+export interface InventoryDecrementRequestedEvent {
+  orderId: string;
+  channel: "online" | "store_erode" | "store_perundurai";
+  items: { bookId: string; quantity: number }[];
+}
+
 export interface OrderCancelledEvent {
   orderId: string;
   reason: string | null;

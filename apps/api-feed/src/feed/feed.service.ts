@@ -1,9 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { sql, type Kysely } from "kysely";
-import type { Shelf } from "@pk-literature/domain-types";
+import type { Banner, Shelf } from "@pk-literature/domain-types";
 import { KYSELY } from "../database/database.module";
 import type { Database, ShelfType } from "../database/database.types";
 import { BookCardBuilder } from "./book-card-builder";
+import { toMediaAsset } from "../common/media-url";
 import { NotFoundProblem } from "../common/problem-details.exception";
 
 // SPEC-05 "Shelf Rules": 5-20 items. Used both as the default page
@@ -49,7 +50,7 @@ export class FeedService {
     private readonly cardBuilder: BookCardBuilder,
   ) {}
 
-  async getFeed(anonymousId: string | null): Promise<{ shelves: Shelf[] }> {
+  async getFeed(anonymousId: string | null): Promise<{ shelves: Shelf[]; banner: Banner | null }> {
     const descriptors = await this.candidateShelves(anonymousId);
     const seen = new Set<string>();
     const shelves: Shelf[] = [];
@@ -70,7 +71,51 @@ export class FeedService {
       shelves.push({ id: descriptor.id, name: descriptor.name, slug: descriptor.slug, type: descriptor.type, items, hasMore });
     }
 
-    return { shelves };
+    const banner = await this.activeBanner();
+    return { shelves, banner };
+  }
+
+  /**
+   * Directus-authored, discovery.banners (20260201000006_banners.sql).
+   * Only the highest-sort_order enabled row whose linked book is still
+   * published — a banner pointing at an unpublished/removed book is
+   * treated as no banner rather than surfaced broken.
+   */
+  private async activeBanner(): Promise<Banner | null> {
+    const row = await this.db
+      .selectFrom("discovery.banners")
+      .innerJoin("catalog.books", "catalog.books.id", "discovery.banners.bookId")
+      .innerJoin("catalog.mediaAssets", "catalog.mediaAssets.id", "discovery.banners.imageAssetId")
+      .select([
+        "discovery.banners.id",
+        "discovery.banners.headline",
+        "discovery.banners.bookId",
+        "catalog.mediaAssets.id as imageId",
+        "catalog.mediaAssets.assetType as imageAssetType",
+        "catalog.mediaAssets.s3Key as imageS3Key",
+        "catalog.mediaAssets.widthPx as imageWidthPx",
+        "catalog.mediaAssets.heightPx as imageHeightPx",
+      ])
+      .where("discovery.banners.enabled", "=", true)
+      .where("catalog.books.status", "=", "published")
+      .orderBy("discovery.banners.sortOrder")
+      .limit(1)
+      .executeTakeFirst();
+
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      headline: row.headline,
+      bookId: row.bookId,
+      image: toMediaAsset({
+        id: row.imageId,
+        assetType: row.imageAssetType,
+        s3Key: row.imageS3Key,
+        widthPx: row.imageWidthPx,
+        heightPx: row.imageHeightPx,
+      })!,
+    };
   }
 
   async getShelfPage(

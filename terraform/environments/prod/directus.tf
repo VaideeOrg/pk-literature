@@ -154,19 +154,21 @@ module "ecs_directus" {
     # added as a fallback alongside directus's own non-public schema,
     # which never worked).
     #
-    # discovery deliberately excluded, unlike the original version of
-    # this list: directus_app's DB role was never granted USAGE on
-    # that schema (it's api-feed's exclusive domain - interest_
-    # profiles/interest_events/feed_shelves, no SPEC-03 editorial
-    # relevance), and search_path only changes what Directus is
-    # willing to LOOK for, not what its DB role can actually see -
-    # confirmed live: including it broke GET /fields outright with a
-    # raw Postgres "permission denied for schema discovery" (42501),
-    # taking down the whole Admin UI (every page calls /fields). Least-
-    # privilege is also the correct call here on its own terms, not
-    # just the fix for the crash - Directus has no legitimate reason
-    # to reach into api-feed's schema.
-    DB_SEARCH_PATH = "public,catalog,staging"
+    # discovery added back (apps/api-feed/migrations/20260201000006_banners.sql):
+    # directus_app now has an explicit GRANT on discovery.banners
+    # specifically (not schema-wide) plus USAGE on the schema, for the
+    # homepage promotional banner - the earlier 42501 "permission denied
+    # for schema discovery" came from search_path including the schema
+    # with NO grant at all, not from anything inherent to discovery
+    # itself. information_schema.tables (what @directus/schema's
+    # introspection reads) only lists tables the connecting role has
+    # some privilege on, so interest_profiles/interest_events/
+    # feed_shelves - still ungranted - should stay invisible to Directus
+    # even with the schema itself back in search_path. NOT yet
+    # confirmed live against a real deployment (see this file's other
+    # "confirmed live" notes above, which were tested through an actual
+    # crash-and-fix cycle; this one hasn't been through that yet).
+    DB_SEARCH_PATH = "public,catalog,staging,discovery"
     # Confirmed live: getExtensionsPath() (extensions/lib/get-
     # extensions-path.js) returns env["EXTENSIONS_PATH"] with no
     # fallback default in that code path - unset, this resolved to
@@ -203,6 +205,12 @@ module "ecs_directus" {
     KEY            = module.secrets_manager.directus_key_secret_arn
     SECRET         = module.secrets_manager.directus_secret_secret_arn
     ADMIN_PASSWORD = module.secrets_manager.directus_admin_password_secret_arn
+    # Read by the decrement-inventory-stock operation's own handler
+    # (context.env, same as eventbridge-put-event's STORAGE_S3_BUCKET
+    # read) - gates its webhook Flow, which is otherwise reachable
+    # without authentication by design. See secrets-manager module's
+    # inventory_webhook_secret comment.
+    INVENTORY_WEBHOOK_SECRET = module.secrets_manager.inventory_webhook_secret_secret_arn
   }
 
   additional_policy_json   = data.aws_iam_policy_document.directus_task.json

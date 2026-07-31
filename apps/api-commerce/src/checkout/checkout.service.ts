@@ -57,6 +57,7 @@ export class CheckoutService {
           // status (e.g. for a future "save cart as draft order"
           // feature) — just not one this endpoint produces.
           status: "pending_payment",
+          channel: "online",
           subtotal: String(subtotal),
           shippingCost: String(FLAT_SHIPPING_COST),
           total: String(total),

@@ -156,7 +156,15 @@ jobs:
             apps/web/dist-server-lambda.zip
             apps/web/dist-image-lambda.zip
             apps/web/.open-next/assets
-          key: web-opennext-${{ hashFiles('apps/web/app/**', 'apps/web/src/**', 'apps/web/middleware.ts', 'apps/web/*.config.*', 'apps/web/package.json', 'apps/web/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/ui/src/**', 'packages/ui/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
+          # web-opennext-2, matching terraform-apply.yml's own copy of
+          # this key exactly (including the RAZORPAY_KEY_ID_PROD fold-in)
+          # - see that workflow's comment for the full history. Keeping
+          # both keys byte-identical matters: a cache entry created here
+          # is exactly the one terraform-apply.yml reuses on the merge
+          # commit, so a mismatched key would just force a rebuild there
+          # instead of failing loudly - not dangerous, but defeats the
+          # point of caching across the two workflows at all.
+          key: web-opennext-2-${{ vars.RAZORPAY_KEY_ID_PROD }}-${{ hashFiles('apps/web/app/**', 'apps/web/src/**', 'apps/web/middleware.ts', 'apps/web/*.config.*', 'apps/web/package.json', 'apps/web/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/ui/src/**', 'packages/ui/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
       # Kept identical to terraform-apply.yml's own copy of this step
       # deliberately - the cache key above is hashFiles()-based (source
       # only, no env vars), so a build cached here without these could

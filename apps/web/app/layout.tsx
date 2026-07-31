@@ -4,6 +4,7 @@ import "./globals.css";
 import { SearchBox } from "@/components/search-box";
 import { CartLink } from "@/components/cart-link";
 import { AccountLink } from "@/components/account-link";
+import { MobileNavToggle } from "@/components/mobile-nav-toggle";
 
 export const metadata: Metadata = {
   title: "Tamil Literature",
@@ -31,13 +32,30 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Link href="/" className="text-lg font-semibold tracking-tight">
               தமிழ் இலக்கியம்
             </Link>
-            <div className="flex-1">
+
+            {/* md: and up — search box + account/cart inline, same as before */}
+            <div className="hidden flex-1 md:block">
               <SearchBox />
             </div>
-            <nav className="flex items-center gap-4 text-sm">
+            <nav className="hidden items-center gap-4 text-sm md:flex">
+              <Link href="/browse" className="text-muted-foreground hover:text-foreground">
+                Browse
+              </Link>
               <AccountLink />
               <CartLink />
             </nav>
+
+            {/* below md: — cart stays visible, search + browse/account collapse behind a hamburger */}
+            <div className="ml-auto flex items-center gap-2 md:hidden">
+              <CartLink />
+              <MobileNavToggle>
+                <SearchBox />
+                <Link href="/browse" className="text-sm text-muted-foreground hover:text-foreground">
+                  Browse
+                </Link>
+                <AccountLink />
+              </MobileNavToggle>
+            </div>
           </div>
         </header>
         <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>

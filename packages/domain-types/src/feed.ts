@@ -46,7 +46,20 @@ export const ShelfSchema = z.object({
 });
 export type Shelf = z.infer<typeof ShelfSchema>;
 
+// Homepage promotional banner — a single editorially-curated image
+// linking to one book (discovery.banners, Directus-authored). Deliberately
+// minimal: one active banner at a time, no scheduling/carousel: the
+// customer-facing UI gap this closes was scoped down to exactly that.
+export const BannerSchema = z.object({
+  id: z.string().uuid(),
+  image: MediaAssetSchema,
+  headline: z.string().nullable(),
+  bookId: z.string().uuid(),
+});
+export type Banner = z.infer<typeof BannerSchema>;
+
 export const FeedResponseSchema = z.object({
   shelves: z.array(ShelfSchema),
+  banner: BannerSchema.nullable(),
 });
 export type FeedResponse = z.infer<typeof FeedResponseSchema>;

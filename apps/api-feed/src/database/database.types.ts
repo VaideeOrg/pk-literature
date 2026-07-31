@@ -36,6 +36,17 @@ export interface FeedShelfTable {
   updatedAt: Generated<ColumnType<Date, never, never>>;
 }
 
+export interface BannerTable {
+  id: Generated<string>;
+  imageAssetId: string;
+  bookId: string;
+  headline: string | null;
+  sortOrder: number;
+  enabled: boolean;
+  createdAt: Generated<ColumnType<Date, never, never>>;
+  updatedAt: Generated<ColumnType<Date, never, never>>;
+}
+
 // --- catalog read model — only the columns this service's shelf/card
 // rendering actually needs, not a full mirror (apps/api-catalog's
 // database.types.ts owns the complete picture). ---
@@ -114,6 +125,7 @@ export interface Database {
   "discovery.interestProfiles": InterestProfileTable;
   "discovery.interestEvents": InterestEventTable;
   "discovery.feedShelves": FeedShelfTable;
+  "discovery.banners": BannerTable;
   "catalog.books": CatalogBookForCardTable;
   "catalog.publishers": CatalogPublisherTable;
   "catalog.mediaAssets": CatalogMediaAssetTable;

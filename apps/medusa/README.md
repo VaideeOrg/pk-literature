@@ -29,37 +29,53 @@ Medusa}").
   to the shared ECR repo (`terraform/bootstrap/ecr.tf`) by
   `.github/workflows/build-medusa-image.yml`, mirroring
   `build-directus-image.yml`.
+- `src/lib/commerce-db.ts` / `commerce-orders.repository.ts` — a
+  standalone `pg.Pool` and query layer against `commerce.orders` and
+  friends, deliberately separate from Medusa's own MikroORM connection
+  (see "Custom commerce-orders admin extension" below).
+- `src/api/admin/commerce-orders/**` — custom Admin API routes (list,
+  detail, status update, add-shipment) reading/writing `commerce.*`
+  directly. Automatically covered by Medusa's own `/admin*` auth
+  middleware — no separate auth wiring needed.
+- `src/admin/routes/commerce-orders/**` — custom Admin UI pages (list +
+  detail, registered in the sidebar as "Store Orders" via
+  `defineRouteConfig`) that call the routes above.
 
-## Scope boundary — Medusa does not read/write `commerce.*` in this pass
+## Scope boundary — Medusa's own Order module still does not read/write `commerce.*`
 
 Migration `20260401000004_medusa_app_role.sql` grants `medusa_app` full
 CRUD on the `commerce` schema (the same tables `apps/api-commerce`
-writes to) — that grant is forward-looking, not yet exercised by any
-code in this repository. This deployment runs **Medusa's own default
+writes to). This deployment still also runs **Medusa's own default
 order/customer/cart data model**, stored in the `medusa` Postgres
 schema (routed there at the DB-role level, not by Medusa config — see
-`medusa-config.ts`'s comment), which is a completely separate set of
-tables from `commerce.orders`/`commerce.customers`/etc.
+`medusa-config.ts`'s comment) — Medusa's *built-in* Orders section in
+the sidebar is still empty and unused; nothing in this repo writes to
+it, and that's deliberate, not a bug.
 
-Making Medusa's admin UI actually manage the *real* orders
-`apps/api-commerce` creates would mean overriding Medusa v2's built-in
-`order` module with a custom module whose data model points at
-`commerce.orders` instead of Medusa's own schema — Medusa v2's module
-architecture assumes a module owns the schema for its own entities, so
-this is a genuine customization project (comparable in kind to, but
-larger in scope than, `apps/directus`'s deferred M:N-junction-fields
-work), not a config change. Deliberately out of scope for this pass.
+What changed: rather than overriding Medusa v2's built-in `order`
+module to point its own data model at `commerce.orders` — a genuine
+module-architecture customization project, since Medusa v2 modules
+assume they own their own schema — this pass took the lighter path of
+a **custom admin route + custom admin page** (`src/api/admin/
+commerce-orders/**`, `src/admin/routes/commerce-orders/**`) that reads/
+writes `commerce.*` directly via a plain `pg.Pool`, with no attempt to
+integrate with Medusa's Order module or its workflow engine. It shows
+up in the sidebar as its own "Store Orders" item, separate from
+Medusa's native (empty) "Orders" item.
 
-Practical consequence: as deployed today, Medusa's admin UI is present
-and reachable (SPEC-06's "Admin UI" checkbox), but is not yet the tool
-an operator would use to mark a real order Shipped or issue a real
-refund against `commerce.orders` — `apps/api-commerce`/Postgres remain
-the actual system of record for every real cart, checkout, order, and
-payment in this repo today. `OrderCancelled`/`OrderShipped`/
-`RefundIssued` (added to `packages/contracts/src/events.ts` and
-`plan/contracts/events/` this phase) have no publisher yet as a direct
-consequence — they're contracts waiting for that future module, not
-events any code in this repo currently emits.
+Practical consequence: `apps/api-commerce`/Postgres remain the actual
+system of record for every cart, checkout, order, and payment — this
+extension is a thin read/write UI over that same data, not a
+replacement for it. An operator can now view orders, update `status`,
+and record a shipment (carrier + tracking number, which also advances
+the order to `shipped`) from Medusa's admin UI. Not yet wired: issuing
+a refund from this UI (`commerce.refunds` is shown read-only — no code
+anywhere in this repo calls Razorpay's refund API yet, so there's
+nothing for an "initiate refund" button to trigger), and
+`OrderCancelled`/`OrderShipped`/`RefundIssued` (`packages/contracts/
+src/events.ts`) still have no publisher — this extension writes
+directly to Postgres, it doesn't go through `apps/api-commerce`'s own
+service layer or its event-publishing.
 
 ## Known issue — resolved, now live-verified
 

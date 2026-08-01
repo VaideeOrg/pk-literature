@@ -100,16 +100,37 @@ module "image_lambda" {
 # SourceArn, FunctionUrlAuthType condition, qualifier match between the
 # permission and the Function URL, OAC signing behavior) and matched
 # the server origin's own already-proven-working setup exactly, byte
-# for byte - yet it still failed, and no further AWS-side cause was
-# found (CloudTrail data events weren't checked before this was applied
-# as the pragmatic fix). Public is an acceptable tradeoff for this one
-# origin specifically: it only resizes already-public cover images
-# pulled from the public media CDN, so an unauthenticated caller could
-# at worst waste invocations directly against the raw URL, not reach
-# anything sensitive. Revisit AWS_IAM + OAC later via CloudTrail if
-# tightening this back up matters.
+# for byte - yet it still failed. Public is an acceptable tradeoff for
+# this one origin specifically: it only resizes already-public cover
+# images pulled from the public media CDN, so an unauthenticated
+# caller could at worst waste invocations directly against the raw
+# URL, not reach anything sensitive. Revisit AWS_IAM + OAC later via
+# CloudTrail if tightening this back up matters.
 resource "aws_lambda_function_url" "image" {
   function_name      = module.image_lambda.function_name
   qualifier          = module.image_lambda.alias_name
   authorization_type = "NONE"
+}
+
+# Auth type NONE above only skips SigV4 signature verification - it
+# does NOT by itself grant public invoke access. Lambda's resource-
+# based policy still governs authorization on top of that and defaults
+# to deny-everyone with no explicit statement. The AWS Console adds a
+# permissive statement automatically as a client-side convenience
+# whenever you flip a Function URL's Auth type to NONE through the
+# browser (a second, separate AddPermission call it makes on your
+# behalf) - but that's console-only behavior, not something
+# UpdateFunctionUrlConfig itself does, so setting authorization_type =
+# "NONE" via this resource (which calls the API directly, same as the
+# CLI/SDK would) does NOT get that automatic grant. This was the real,
+# root cause of the whole "every /_next/image request 403s despite
+# Auth type showing NONE" investigation - confirmed live by finding
+# Lambda's resource-based policy on the `live` qualifier genuinely
+# empty after the auth-type change, no statement of any kind.
+resource "aws_lambda_permission" "public_invoke_image" {
+  statement_id           = "FunctionURLAllowPublicAccess"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = module.image_lambda.alias_arn
+  principal              = "*"
+  function_url_auth_type = "NONE"
 }

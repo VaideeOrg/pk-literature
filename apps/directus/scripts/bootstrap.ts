@@ -169,6 +169,15 @@ async function main() {
 	await ensureImageThumbnailDisplays(client);
 
 	console.log('Directus bootstrap complete.');
+	// Explicit exit, not a natural fall-through: @directus/sdk's rest()
+	// composable keeps its underlying fetch/HTTP client's connection(s)
+	// open (keep-alive), which keeps Node's event loop alive too - every
+	// single live GitHub Actions run of this script (see workflow run
+	// history for directus-bootstrap.yml) has printed this exact line and
+	// then just hung until someone manually cancelled the run, well after
+	// all real work was done. ts-node has no equivalent of e.g. Jest's
+	// --forceExit for this.
+	process.exit(0);
 }
 
 /**
@@ -561,5 +570,5 @@ async function ensurePermission(
 
 main().catch((error) => {
 	console.error(error);
-	process.exitCode = 1;
+	process.exit(1);
 });

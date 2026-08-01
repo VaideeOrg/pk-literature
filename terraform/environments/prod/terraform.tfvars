@@ -30,10 +30,11 @@ existing_nat_gateway_ids                 = []                                   
 # once its state entry collided with an unrelated resource's rule ID.
 existing_interface_endpoint_sg_ids = ["sg-0893b4a98e0b5a7c9"]
 
-# Flipped back to true: cover images are still broken (live debugging
-# paused, see terraform/modules/cloudfront-web's own comments on the
-# image origin for the current state) and there was also a real
-# site-wide outage from PR #102/#103's CloudFront OAC churn - hiding
-# the storefront again until covers actually work and the dust has
-# settled, rather than leaving a visibly broken site up.
-coming_soon_mode = true
+# Flipped false again: PR #105 fixes the real root cause of the broken
+# covers (the image Lambda Function URL's resource-based policy was
+# missing the explicit public-invoke grant Auth type = NONE alone
+# doesn't provide - see modules/opennext's own comment on
+# aws_lambda_permission.public_invoke_image), so reopening the
+# storefront to verify covers actually render now that PR #105 is
+# applied alongside this.
+coming_soon_mode = false

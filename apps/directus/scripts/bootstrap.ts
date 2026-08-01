@@ -50,6 +50,8 @@ import {
 	updateFlow,
 	createOperation,
 	updateOperation,
+	readField,
+	updateField,
 } from '@directus/sdk';
 
 function requireEnv(name: string): string {
@@ -64,6 +66,12 @@ const DIRECTUS_URL = requireEnv('DIRECTUS_URL');
 const TOKEN = process.env.DIRECTUS_TOKEN;
 const ADMIN_EMAIL = process.env.DIRECTUS_ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.DIRECTUS_ADMIN_PASSWORD;
+
+// Same fallback convention as apps/api-catalog|api-feed's own
+// media-url.ts (CDN_BASE_URL) - only used to prefix the image-url
+// display's src for fields storing a bare S3 key rather than a full
+// URL (see ensureImageThumbnailDisplays below).
+const CDN_BASE_URL = process.env.CDN_BASE_URL ?? 'https://cdn.pk-literature.example';
 
 if (!TOKEN && !(ADMIN_EMAIL && ADMIN_PASSWORD)) {
 	throw new Error('Set DIRECTUS_TOKEN, or both DIRECTUS_ADMIN_EMAIL and DIRECTUS_ADMIN_PASSWORD.');
@@ -158,8 +166,49 @@ async function main() {
 	await ensureRoleWithPolicy(client, 'Senior Editor', seniorEditorPolicyId);
 	await ensurePromotionFlow(client);
 	await ensureInventoryDecrementFlow(client);
+	await ensureImageThumbnailDisplays(client);
 
 	console.log('Directus bootstrap complete.');
+}
+
+/**
+ * Wires the image-url display extension onto every field that holds a
+ * cover image reference, so editors can actually see a book's cover
+ * without leaving Directus — the concrete blocker this was built for:
+ * approving a staging book usually means filling in its title, which
+ * means knowing what book it even is, which needs the cover visible.
+ *
+ * staging_books.cover_source_url and staging_media.source_url already
+ * hold a full external URL (whatever the crawler found on the
+ * publisher's own site) — no prefix needed. catalog.media_assets.
+ * s3_key holds a bare S3 key instead (the CDN-servable copy, once a
+ * cover's been promoted), so that one gets urlPrefix set to
+ * CDN_BASE_URL.
+ */
+async function ensureImageThumbnailDisplays(client: Client) {
+	const targets: { collection: string; field: string; urlPrefix?: string }[] = [
+		{ collection: 'staging_books', field: 'cover_source_url' },
+		{ collection: 'staging_media', field: 'source_url' },
+		{ collection: 'media_assets', field: 's3_key', urlPrefix: `${CDN_BASE_URL}/` },
+	];
+
+	for (const target of targets) {
+		const current = await client.request(readField(target.collection, target.field));
+		if (current.meta?.display === 'image-url') {
+			console.log(`display ${target.collection}.${target.field}: already set to image-url`);
+			continue;
+		}
+
+		await client.request(
+			updateField(target.collection, target.field, {
+				meta: {
+					display: 'image-url',
+					display_options: { urlPrefix: target.urlPrefix ?? null },
+				},
+			}),
+		);
+		console.log(`display ${target.collection}.${target.field}: set to image-url`);
+	}
 }
 
 async function ensureCollectionsTracked(client: Client) {

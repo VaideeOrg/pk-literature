@@ -80,4 +80,10 @@ jobs:
           # hardcodes the prod domain.
           DIRECTUS_URL: https://directus.puthagakadai.com
           DIRECTUS_ADMIN_EMAIL: www.vaidees@gmail.com
+          # Same "not a secret, hardcoded here like the other prod
+          # domain values above" reasoning - matches
+          # terraform/modules/cloudfront's cdn.${domain_name} alias.
+          # Only used to prefix the image-url display's src for fields
+          # storing a bare S3 key (ensureImageThumbnailDisplays).
+          CDN_BASE_URL: https://cdn.puthagakadai.com
         run: pnpm run bootstrap

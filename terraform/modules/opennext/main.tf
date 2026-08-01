@@ -106,15 +106,6 @@ module "image_lambda" {
 # caller could at worst waste invocations directly against the raw
 # URL, not reach anything sensitive. Revisit AWS_IAM + OAC later via
 # CloudTrail if tightening this back up matters.
-# qualifier restored (step 2 of 2) - step 1 removed it to force a
-# replacement onto the default $LATEST qualifier; this forces a SECOND
-# replacement back onto "live", landing on a genuinely fresh
-# underlying Function URL resource at the same desired final state as
-# before this two-step exercise. See step 1's own commit message for
-# the full reasoning (every documented AWS-side authorization
-# requirement for this resource checked out correct, yet it still
-# 403'd a bare unsigned request - this is a "clean recreate, in case
-# internal state got stuck" experiment, not a config fix).
 resource "aws_lambda_function_url" "image" {
   function_name      = module.image_lambda.function_name
   qualifier          = module.image_lambda.alias_name
@@ -124,22 +115,41 @@ resource "aws_lambda_function_url" "image" {
 # Auth type NONE above only skips SigV4 signature verification - it
 # does NOT by itself grant public invoke access. Lambda's resource-
 # based policy still governs authorization on top of that and defaults
-# to deny-everyone with no explicit statement. The AWS Console adds a
-# permissive statement automatically as a client-side convenience
+# to deny-everyone with no explicit statement. The AWS Console adds
+# permissive statements automatically as a client-side convenience
 # whenever you flip a Function URL's Auth type to NONE through the
-# browser (a second, separate AddPermission call it makes on your
-# behalf) - but that's console-only behavior, not something
-# UpdateFunctionUrlConfig itself does, so setting authorization_type =
-# "NONE" via this resource (which calls the API directly, same as the
-# CLI/SDK would) does NOT get that automatic grant. This was the real,
-# root cause of the whole "every /_next/image request 403s despite
-# Auth type showing NONE" investigation - confirmed live by finding
-# Lambda's resource-based policy on the `live` qualifier genuinely
-# empty after the auth-type change, no statement of any kind.
+# browser (separate AddPermission calls it makes on your behalf) - but
+# that's console-only behavior, not something UpdateFunctionUrlConfig
+# itself does, so setting authorization_type = "NONE" via this
+# resource (which calls the API directly, same as the CLI/SDK would)
+# does NOT get those automatic grants.
+#
+# It's actually TWO statements the console adds, not one - confirmed
+# live by comparing a working policy (manually added via console
+# earlier in this investigation, on the function's unqualified/$LATEST
+# ARN) against this alias's own policy, which only had the
+# InvokeFunctionUrl statement below and still 403'd a real invocation.
+# The second statement grants plain lambda:InvokeFunction, gated by a
+# Bool condition (lambda:InvokedViaFunctionUrl = true) that
+# aws_lambda_permission's typed arguments have no equivalent for -
+# public_invoke_image_via_function below is the closest reachable
+# equivalent, granting InvokeFunction unconditionally to anyone rather
+# than only when invoked via this specific Function URL. Broader than
+# the console's version, but still confined to this one alias, and the
+# function only resizes already-public cover images, so the extra
+# breadth is an acceptable tradeoff to match what's actually confirmed
+# working.
 resource "aws_lambda_permission" "public_invoke_image" {
   statement_id           = "FunctionURLAllowPublicAccess"
   action                 = "lambda:InvokeFunctionUrl"
   function_name          = module.image_lambda.alias_arn
   principal              = "*"
   function_url_auth_type = "NONE"
+}
+
+resource "aws_lambda_permission" "public_invoke_image_via_function" {
+  statement_id  = "FunctionURLAllowInvokeAction"
+  action        = "lambda:InvokeFunction"
+  function_name = module.image_lambda.alias_arn
+  principal     = "*"
 }

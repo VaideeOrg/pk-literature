@@ -106,23 +106,18 @@ module "image_lambda" {
 # caller could at worst waste invocations directly against the raw
 # URL, not reach anything sensitive. Revisit AWS_IAM + OAC later via
 # CloudTrail if tightening this back up matters.
-# qualifier temporarily removed (step 1 of 2) to force a genuine
-# destroy+recreate of this resource - qualifier is immutable on
-# aws_lambda_function_url (AWS's UpdateFunctionUrlConfig API has no way
-# to move a Function URL from one qualifier to another, only delete
-# and recreate), so this is the only lever available to force a clean
-# replacement without restructuring the resource address itself. Every
-# documented AWS-side authorization requirement for this resource has
-# been independently verified correct (Auth type NONE, resource policy
-# exactly matching AWS's own required shape, scoped to the right
-# qualifier) and it still 403s on a bare unsigned request - trying a
-# clean recreate on the chance something in this resource's internal
-# state got stuck across its many toggles earlier in this
-# investigation (AWS_IAM -> NONE, permission added/removed/re-added).
-# Step 2 (a follow-up commit) puts `qualifier = module.image_lambda.
-# alias_name` back, forcing a second replacement back onto "live".
+# qualifier restored (step 2 of 2) - step 1 removed it to force a
+# replacement onto the default $LATEST qualifier; this forces a SECOND
+# replacement back onto "live", landing on a genuinely fresh
+# underlying Function URL resource at the same desired final state as
+# before this two-step exercise. See step 1's own commit message for
+# the full reasoning (every documented AWS-side authorization
+# requirement for this resource checked out correct, yet it still
+# 403'd a bare unsigned request - this is a "clean recreate, in case
+# internal state got stuck" experiment, not a config fix).
 resource "aws_lambda_function_url" "image" {
   function_name      = module.image_lambda.function_name
+  qualifier          = module.image_lambda.alias_name
   authorization_type = "NONE"
 }
 

@@ -52,5 +52,15 @@ export default defineDisplay({
 			},
 		},
 	],
-	types: ['string'],
+	// Not just 'string' - confirmed live that all three target fields
+	// (staging_books.cover_source_url, staging_media.source_url,
+	// catalog.media_assets.s3_key) are Postgres `text` columns, which
+	// Directus's schema introspection maps to its own 'text' type, not
+	// 'string' ('string' is Directus's type for varchar/character
+	// varying specifically). A 'string'-only types array meant this
+	// display was correctly loaded and enabled but never appeared as a
+	// selectable option in any of those fields' Display dropdown at
+	// all - not a deployment/loading problem, just this filter being
+	// too narrow.
+	types: ['string', 'text'],
 });

@@ -64,6 +64,8 @@ see that workflow's own header comment for why.
   `AWS_DEPLOY_ROLE_ARN_DEV`, `AWS_PUBLISHER_IMPORT_ROLE_ARN_DEV`,
   `KALACHUVADU_BASE_URL`, `ETHIRVELIYEEDU_BASE_URL` (set to
   `https://ethirveliyeedu.com/collections/all/products.json`),
+  `YAAVARUM_BASE_URL` (set to
+  `https://yaavarum.com/collections/all/products.json`),
   `STAGING_INGEST_BASE_URL_DEV` (the last one is only known after the
   first apply — see step 4).
 

@@ -1,0 +1,100 @@
+{
+  "products": [
+    {
+      "id": 9161962717347,
+      "title": "21 ஆம் நூற்றாண்டின் திரைமொழி",
+      "handle": "21stcentfilmlang",
+      "body_html": "<p><span style=\"color: rgb(255, 42, 0);\"><strong><span style=\"color: rgb(0, 0, 0);\">ஒருபக்கம் கடந்த இருபது ஆண்டுகளாக உலக சினிமாவைப் பார்க்கும் பார்வையாளனாகவும், மறுபக்கம் திரைப்படம் எடுக்கவிருக்கும் மனதுடையவனாகவும் என இவை என்னுள் இருவேறு துருவங்களாக தங்களின் எல்லையை விரிவுபடுத்திக்கொண்டே இருக்கின்றனர்.</span><br><br><span style=\"color: rgb(0, 0, 0);\">கலை உனக்கு விருப்பட்ட திசைகளில் திரும்பும் ஆகையால் மகிழாதே, அது உன் எதிரிக்கும் பொருந்தும்.</span><br></strong></span></p>",
+      "published_at": "2026-06-30T12:17:57+05:30",
+      "created_at": "2026-06-30T12:17:55+05:30",
+      "updated_at": "2026-08-29T15:33:19+05:30",
+      "vendor": "Yaavarum Publishers",
+      "product_type": "literature",
+      "tags": ["author", "yaavarumpublishers"],
+      "variants": [
+        {
+          "id": 47824900522147,
+          "title": "Default Title",
+          "sku": null,
+          "available": true,
+          "price": "250.00",
+          "compare_at_price": "275.00",
+          "position": 1,
+          "product_id": 9161962717347
+        }
+      ],
+      "images": [
+        {
+          "id": 50789574967459,
+          "position": 1,
+          "product_id": 9161962717347,
+          "src": "https://cdn.shopify.com/s/files/1/0747/0553/5139/files/thiraimozhi.jpg?v=1782911797",
+          "width": 407,
+          "height": 621
+        }
+      ],
+      "options": [{ "name": "Title", "position": 1, "values": ["Default Title"] }]
+    },
+    {
+      "id": 9075727204515,
+      "title": "அம்புப் படுக்கை",
+      "handle": "ambu-padukkai",
+      "body_html": "<p><span>பீஷ்மர் காலத்தின்முன் தன் துயர் நீங்க அமைதியுடன் வேண்டிக் கிடக்கிறார். போதும் போதுமெனக் கதறவில்லை.</span></p>",
+      "published_at": "2026-04-05T18:34:52+05:30",
+      "created_at": "2026-04-05T18:34:51+05:30",
+      "updated_at": "2026-08-29T15:33:19+05:30",
+      "vendor": "Yaavarum Publishers",
+      "product_type": "literature",
+      "tags": ["short stories", "yaavarumpublishers"],
+      "variants": [
+        {
+          "id": 47531144118435,
+          "title": "Default Title",
+          "sku": null,
+          "available": true,
+          "price": "180.00",
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 9075727204515
+        }
+      ],
+      "images": [
+        {
+          "id": 47776549404835,
+          "position": 1,
+          "product_id": 9075727204515,
+          "src": "https://cdn.shopify.com/s/files/1/0747/0553/5139/files/ampupadukkai.png?v=1775393980",
+          "width": 530,
+          "height": 818
+        }
+      ],
+      "options": [{ "name": "Title", "position": 1, "values": ["Default Title"] }]
+    },
+    {
+      "id": 900000000001,
+      "title": "Placeholder non-book listing",
+      "handle": "placeholder-blank-product-type-test-fixture",
+      "body_html": "<p>Not a real Yaavarum product - a minimal synthetic entry appended to this fixture purely to exercise discover()'s blank-product_type exclusion rule.</p>",
+      "published_at": "2026-01-01T00:00:00+05:30",
+      "created_at": "2026-01-01T00:00:00+05:30",
+      "updated_at": "2026-01-01T00:00:00+05:30",
+      "vendor": "Some Vendor",
+      "product_type": "",
+      "tags": [],
+      "variants": [
+        {
+          "id": 900000000002,
+          "title": "Default Title",
+          "sku": null,
+          "available": true,
+          "price": "10.00",
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 900000000001
+        }
+      ],
+      "images": [],
+      "options": [{ "name": "Title", "position": 1, "values": ["Default Title"] }]
+    }
+  ]
+}

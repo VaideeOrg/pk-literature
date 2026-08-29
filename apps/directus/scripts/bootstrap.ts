@@ -182,22 +182,25 @@ async function main() {
 
 /**
  * Wires the image-url display extension onto every field that holds a
- * cover image reference, so editors can actually see a book's cover
- * without leaving Directus — the concrete blocker this was built for:
- * approving a staging book usually means filling in its title, which
- * means knowing what book it even is, which needs the cover visible.
- *
- * staging_books.cover_source_url and staging_media.source_url already
- * hold a full external URL (whatever the crawler found on the
- * publisher's own site) — no prefix needed. catalog.media_assets.
- * s3_key holds a bare S3 key instead (the CDN-servable copy, once a
- * cover's been promoted), so that one gets urlPrefix set to
- * CDN_BASE_URL.
+ * cover image reference actually resolvable to a real, servable file —
+ * an S3 key served through our own CDN — so editors can actually see a
+ * book's cover without leaving Directus. Deliberately NOT wired onto
+ * staging_books.cover_source_url or staging_media.source_url: both
+ * hold the raw externally-crawled publisher URL, and Directus's CSP
+ * (terraform/environments/prod/directus.tf's
+ * CONTENT_SECURITY_POLICY_DIRECTIVES__IMG_SRC) only allows img-src
+ * from our own CDN origin, not arbitrary external domains — confirmed
+ * live that a CSP-blocked <img> src never even shows up as a request
+ * in the browser's Network tab, let alone a 403/404 from the
+ * publisher's own site. apps/publisher-crawler's run-import.ts already
+ * downloads the cover to S3 (staging.staging_media.s3_key) whenever
+ * coverSourceUrl is set, so the actual servable copy always exists by
+ * the time a staging book does — render that instead of opening CSP up
+ * to every publisher's domain.
  */
 async function ensureImageThumbnailDisplays(client: Client) {
-	const targets: { collection: string; field: string; urlPrefix?: string }[] = [
-		{ collection: 'staging_books', field: 'cover_source_url' },
-		{ collection: 'staging_media', field: 'source_url' },
+	const targets: { collection: string; field: string; urlPrefix: string }[] = [
+		{ collection: 'staging_media', field: 's3_key', urlPrefix: `${CDN_BASE_URL}/` },
 		{ collection: 'media_assets', field: 's3_key', urlPrefix: `${CDN_BASE_URL}/` },
 	];
 
@@ -212,11 +215,35 @@ async function ensureImageThumbnailDisplays(client: Client) {
 			updateField(target.collection, target.field, {
 				meta: {
 					display: 'image-url',
-					display_options: { urlPrefix: target.urlPrefix ?? null },
+					display_options: { urlPrefix: target.urlPrefix },
 				},
 			}),
 		);
 		console.log(`display ${target.collection}.${target.field}: set to image-url`);
+	}
+
+	// staging_books.cover_source_url and staging_media.source_url were
+	// wired to this same display in PR #109/#110, before the S3-backed
+	// alternative above existed. Revert them back to no display rather
+	// than leave them silently unmanaged and permanently unrenderable
+	// now that CSP isn't opening up for external domains.
+	const staleTargets = [
+		{ collection: 'staging_books', field: 'cover_source_url' },
+		{ collection: 'staging_media', field: 'source_url' },
+	];
+	for (const target of staleTargets) {
+		const current = await client.request(readField(target.collection, target.field));
+		if (current.meta?.display !== 'image-url') {
+			console.log(`display ${target.collection}.${target.field}: already not image-url`);
+			continue;
+		}
+
+		await client.request(
+			updateField(target.collection, target.field, {
+				meta: { display: null, display_options: null },
+			}),
+		);
+		console.log(`display ${target.collection}.${target.field}: reverted from image-url to none`);
 	}
 }
 

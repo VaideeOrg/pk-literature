@@ -31,6 +31,10 @@ export class CanonicalBookDto {
 
   @IsOptional()
   @IsString()
+  sourceSku!: string | null;
+
+  @IsOptional()
+  @IsString()
   @Length(13, 13)
   isbn13!: string | null;
 

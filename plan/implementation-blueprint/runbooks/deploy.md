@@ -62,8 +62,10 @@ see that workflow's own header comment for why.
   domain's zone; set it `false` and reuse an existing zone if it does.
 - **GitHub Actions variables** (repo or `dev` environment scope):
   `AWS_DEPLOY_ROLE_ARN_DEV`, `AWS_PUBLISHER_IMPORT_ROLE_ARN_DEV`,
-  `KALACHUVADU_BASE_URL`, `STAGING_INGEST_BASE_URL_DEV` (the last one
-  is only known after the first apply — see step 4).
+  `KALACHUVADU_BASE_URL`, `ETHIRVELIYEEDU_BASE_URL` (set to
+  `https://ethirveliyeedu.com/collections/all/products.json`),
+  `STAGING_INGEST_BASE_URL_DEV` (the last one is only known after the
+  first apply — see step 4).
 
 ---
 

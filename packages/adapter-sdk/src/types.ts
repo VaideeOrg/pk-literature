@@ -11,6 +11,13 @@ import { z } from "zod";
 // editorial review and DB ids).
 export const CanonicalBookSchema = z.object({
   sourceRef: z.string().min(1), // publisher's own id/URL — staging_books.source_ref
+  // Publisher's own internal SKU/product-id, kept separate from isbn13
+  // rather than folded into it — a publisher's SKU is not guaranteed to
+  // actually be an ISBN even when it looks numeric (Ethirveliyeedu
+  // adapter: isbn13 is only ever populated from an explicit "ISBN:"
+  // label, never inferred from this). null for adapters with no such
+  // concept (e.g. Kalachuvadu).
+  sourceSku: z.string().nullable(),
   isbn13: z.string().length(13).nullable(),
   title: z.string().nullable(),
   subtitle: z.string().nullable(),

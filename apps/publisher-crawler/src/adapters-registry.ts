@@ -1,4 +1,4 @@
-import { KalachuvaduAdapter, type PublisherAdapter } from "@pk-literature/adapter-sdk";
+import { EthirveliyeeduAdapter, KalachuvaduAdapter, type PublisherAdapter } from "@pk-literature/adapter-sdk";
 
 // One entry per onboarded publisher (SPEC-04 §8 Publisher Registration)
 // — adding a new publisher means adding an adapter implementation under
@@ -7,6 +7,7 @@ import { KalachuvaduAdapter, type PublisherAdapter } from "@pk-literature/adapte
 // core platform").
 const ADAPTER_FACTORIES: Record<string, (baseUrl: string) => PublisherAdapter> = {
   kalachuvadu: (baseUrl) => new KalachuvaduAdapter({ baseUrl }),
+  ethirveliyeedu: (baseUrl) => new EthirveliyeeduAdapter({ baseUrl }),
 };
 
 export function getAdapter(publisherCode: string, baseUrl: string): PublisherAdapter {

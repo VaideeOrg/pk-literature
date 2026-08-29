@@ -55,6 +55,9 @@ CREATE TABLE staging.staging_books (
   source_ref         text NOT NULL,           -- publisher's own id/URL for this book — used for
                                                 -- incremental import diffing (SPEC-04 section 21)
   raw_payload        jsonb NOT NULL,           -- untouched adapter output, kept for audit/replay
+  source_sku         text,                     -- publisher's own internal SKU, kept separate from
+                                                -- isbn13 (never cross-populated - see migration
+                                                -- 20260101000025); null for adapters with no such concept
 
   -- Extracted + normalized fields (SPEC-04 section 12 minimum fields)
   isbn13             char(13),

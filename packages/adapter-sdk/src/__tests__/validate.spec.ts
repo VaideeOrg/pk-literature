@@ -3,6 +3,7 @@ import type { CanonicalBook } from "../types";
 
 const validBook: CanonicalBook = {
   sourceRef: "book-1",
+  sourceSku: null,
   isbn13: "9781234567890",
   title: "Vishnupuram",
   subtitle: null,

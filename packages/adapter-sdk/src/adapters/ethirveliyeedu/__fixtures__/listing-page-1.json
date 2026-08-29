@@ -1,0 +1,145 @@
+{
+  "products": [
+    {
+      "id": 8005773721754,
+      "title": "'பாம்பு மனிதன்' ரோமுலஸ் விட்டேகர்: வாழ்க்கைப் பயணம்",
+      "handle": "பாம்பு-மனிதன்-ரோமுலஸ்-விட்டேகர்-வாழ்க்கைப்-பயணம்",
+      "body_html": "<p><span data-mce-fragment=\"1\">சென்னை கிண்டி சிறுவர் பூங்காவை அடுத்துள்ள ‘பாம்புப் பண்ணை’யைப் பற்றி அறிபாதவர்கள் சொற்பமாகவே இருப்பார்கள். இதையும் கிழக்குக் கடற்கரைச் சாலையில் உள்ள புகழ்பெற்ற ‘சென்னை முதலைப் பண்ணை’யையும் நிறுவியவர் ரோமுலஸ் விட்டேகர். ஒரு தனிநபரின் வாழ்க்கை வரலாறு என்று இந்த நூலைச் சொல்ல முடியாது. இயற்கை வரலாற்றுப் புத்தகம் என்று சொல்வதுதான் சரியாக இருக்கும். அதிலும் தமிழகத்தை மையமாகக்கொண்டு பணியாற்றிய உலகறிந்த ஓர் அறிஞரின் வரலாறு இது. தமிழகப் பழங்குடிகளுடன் உறவாடி, இயற்கைச் சூழலைக் குறித்த புரிதலை மாநில-தேசிய-சர்வதேச அளவில் ஏற்படுத்திய ஒருவரைப் பற்றிய நூல் தமிழில் வெளியாவது குறிப்பிடத்தக்கது. முற்றிலும் புதியதோர் உலகை இந்த நூல் திறந்து காட்டுகிறது.</span></p>\n<p> </p>\n<p><strong>Author</strong>: ஸாய் விட்டேகர்  </p>\n<p><strong>Translator</strong>: கமலாலயன்</p>\n<p><strong>Genre</strong>: சூழலியல் / வாழ்க்கை வரலாறு<br></p>\n<p><span data-mce-fragment=\"1\"><strong>Language</strong>: தமிழ்</span></p>\n<p><span data-mce-fragment=\"1\"><strong>Type</strong>: Paperback</span></p>",
+      "published_at": "2023-12-09T18:58:15+05:30",
+      "created_at": "2023-12-09T18:58:15+05:30",
+      "updated_at": "2026-08-29T14:25:59+05:30",
+      "vendor": "Vaanathi",
+      "product_type": "Books",
+      "tags": ["home Page", "பிற பதிப்பக நூல்கள்"],
+      "variants": [
+        {
+          "id": 44207192047770,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "",
+          "requires_shipping": true,
+          "taxable": false,
+          "featured_image": null,
+          "available": false,
+          "price": "500.00",
+          "grams": 0,
+          "compare_at_price": "500.00",
+          "position": 2,
+          "product_id": 8005773721754,
+          "created_at": "2023-12-09T18:58:17+05:30",
+          "updated_at": "2026-08-29T14:25:59+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 38418509365402,
+          "created_at": "2023-12-09T18:58:15+05:30",
+          "position": 1,
+          "updated_at": "2023-12-09T18:58:17+05:30",
+          "product_id": 8005773721754,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0614/9003/6890/files/paambu.jpg?v=1702128497",
+          "width": 659,
+          "height": 1000
+        }
+      ],
+      "options": [{ "name": "Title", "position": 1, "values": ["Default Title"] }]
+    },
+    {
+      "id": 7581489037466,
+      "title": "13 வருடங்கள்:  ஒரு நக்ஸலைட்டின் சிறைக் குறிப்புகள்",
+      "handle": "13-வருடங்கள்-ஒரு-நக்ஸலைட்டின்-சிறைக்-குறிப்புகள்",
+      "body_html": "<p data-mce-fragment=\"1\">தன்னுடைய ‘குற்றவாளி’ வாழ்வின் கீழ்மைப்பட்ட வாசத்தைக் கொண்டு சிங் நம்முடைய ஆன்மாக்களை எழுப்புகிறார்.<br data-mce-fragment=\"1\">- வரவர ராவ்</p>\n<p><strong>Author</strong>:<span> ராம்சந்த்ரா சிங்</span></p>\n<p><span><strong>Translator</strong>: இரா.செந்தில்</span></p>\n<p><span data-mce-fragment=\"1\"><strong></strong></span><span data-mce-fragment=\"1\"><strong>Genre</strong>: தன்வரலாறு</span></p>\n<p><span data-mce-fragment=\"1\"><strong>Language</strong>: தமிழ்</span></p>\n<p><span data-mce-fragment=\"1\"><strong>Type</strong>: Paperback</span></p>",
+      "published_at": "2022-11-27T14:52:50+05:30",
+      "created_at": "2022-11-27T14:52:48+05:30",
+      "updated_at": "2026-08-29T14:25:59+05:30",
+      "vendor": "Ethir Veliyeedu",
+      "product_type": "Books",
+      "tags": ["13 years", "Biography & Auto-Biography", "இரா. செந்தில்", "ராம்சந்த்ரா சிங்"],
+      "variants": [
+        {
+          "id": 42837838233754,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "9789387333697",
+          "requires_shipping": true,
+          "taxable": false,
+          "featured_image": null,
+          "available": true,
+          "price": "243.00",
+          "grams": 0,
+          "compare_at_price": "270.00",
+          "position": 1,
+          "product_id": 7581489037466,
+          "created_at": "2022-11-27T14:52:48+05:30",
+          "updated_at": "2026-08-29T14:25:59+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 35652342284442,
+          "created_at": "2022-11-27T14:52:48+05:30",
+          "position": 1,
+          "updated_at": "2022-11-27T14:52:50+05:30",
+          "product_id": 7581489037466,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0614/9003/6890/products/13yearscoverfull.jpg?v=1669540970",
+          "width": 867,
+          "height": 1299
+        }
+      ],
+      "options": [{ "name": "Title", "position": 1, "values": ["Default Title"] }]
+    },
+    {
+      "id": 8421872238746,
+      "title": "Indian Heritages: Vol 1",
+      "handle": "indian-heritages",
+      "body_html": "<p>An elegantly designed, interactive book showcasing monuments and sites in India which are included in UNESCO's list of World Heritages.</p>\n<p><strong>Author</strong>:<span> Yusuf Madhiya</span></p>\n<p><span><strong></strong></span><span><strong>Genre</strong>: Art And History</span></p>\n<p><span><strong>Language</strong>: English</span></p>\n<p><span><strong>Type</strong>: Paperback</span></p>\n<p><span><strong>ISBN:</strong> 9789348598271</span></p>",
+      "published_at": "2025-01-23T12:12:51+05:30",
+      "created_at": "2025-01-23T12:12:51+05:30",
+      "updated_at": "2026-08-29T14:25:59+05:30",
+      "vendor": "Ethir Veliyeedu",
+      "product_type": "",
+      "tags": ["Essays", "history", "Yusuf Madhiya"],
+      "variants": [
+        {
+          "id": 45479356268698,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "",
+          "requires_shipping": true,
+          "taxable": false,
+          "featured_image": null,
+          "available": true,
+          "price": "630.00",
+          "grams": 0,
+          "compare_at_price": "699.00",
+          "position": 2,
+          "product_id": 8421872238746,
+          "created_at": "2025-01-23T12:12:53+05:30",
+          "updated_at": "2026-08-29T14:25:59+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 42192700899482,
+          "created_at": "2025-03-27T11:54:00+05:30",
+          "position": 1,
+          "updated_at": "2025-03-27T11:54:01+05:30",
+          "product_id": 8421872238746,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0614/9003/6890/files/HeritageF.jpg?v=1743056641",
+          "width": 1819,
+          "height": 2764
+        }
+      ],
+      "options": [{ "name": "Title", "position": 1, "values": ["Default Title"] }]
+    }
+  ]
+}

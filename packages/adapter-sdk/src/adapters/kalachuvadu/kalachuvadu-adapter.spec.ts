@@ -82,6 +82,7 @@ describe("KalachuvaduAdapter", () => {
 
       expect(book).toEqual({
         sourceRef: "gandhi1915thirumbivanthamynthan_2068",
+        sourceSku: null,
         isbn13: "9789355234339",
         title: "காந்தி 1915: திரும்பி வந்த மைந்தன் (இ-புத்தகம்)",
         subtitle: null,

@@ -91,6 +91,7 @@ export class StagingBooksService {
         publisherId: run.publisherId,
         sourceRef: book.sourceRef,
         rawPayload: JSON.stringify(book),
+        sourceSku: book.sourceSku,
         isbn13: book.isbn13,
         title: book.title,
         subtitle: book.subtitle,
@@ -114,6 +115,7 @@ export class StagingBooksService {
       .onConflict((oc) =>
         oc.columns(["publisherId", "sourceRef"]).doUpdateSet((eb) => ({
           rawPayload: eb.ref("excluded.rawPayload"),
+          sourceSku: eb.ref("excluded.sourceSku"),
           isbn13: eb.ref("excluded.isbn13"),
           title: eb.ref("excluded.title"),
           subtitle: eb.ref("excluded.subtitle"),

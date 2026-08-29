@@ -84,10 +84,11 @@ jobs:
           # secrets/variables, one per publisher code
           # (infrastructure/secrets.md: "Per-publisher adapter
           # credentials... live in GitHub Actions secrets, not AWS
-          # Secrets Manager"), not hardcoded here — this repo only has
-          # the Kalachuvadu reference adapter registered so far, hence
-          # the single variable rather than a lookup table.
-          PUBLISHER_BASE_URL: ${{ vars.KALACHUVADU_BASE_URL }}
+          # Secrets Manager"), not hardcoded here. Two publishers
+          # registered so far (apps/publisher-crawler/src/adapters-registry.ts)
+          # — selected by inputs.publisher_code; add another ternary arm
+          # here (and a matching vars.<CODE>_BASE_URL) as more come online.
+          PUBLISHER_BASE_URL: ${{ inputs.publisher_code == 'ethirveliyeedu' && vars.ETHIRVELIYEEDU_BASE_URL || vars.KALACHUVADU_BASE_URL }}
           STAGING_INGEST_BASE_URL: ${{ vars.STAGING_INGEST_BASE_URL_PROD }}
           AWS_REGION: ap-southeast-1
           IMPORT_TRIGGER: ${{ inputs.trigger }}

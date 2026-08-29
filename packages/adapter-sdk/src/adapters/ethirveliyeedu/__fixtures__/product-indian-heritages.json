@@ -1,0 +1,33 @@
+{
+  "product": {
+    "id": 8421872238746,
+    "title": "Indian Heritages: Vol 1",
+    "handle": "indian-heritages",
+    "body_html": "<p>An elegantly designed, interactive book showcasing monuments and sites in India which are included in UNESCO's list of World Heritages.</p>\n<p><strong>Author</strong>:<span> Yusuf Madhiya</span></p>\n<p><span><strong></strong></span><span><strong>Genre</strong>: Art And History</span></p>\n<p><span><strong>Language</strong>: English</span></p>\n<p><span><strong>Type</strong>: Paperback</span></p>\n<p><span><strong>ISBN:</strong> 9789348598271</span></p>",
+    "vendor": "Ethir Veliyeedu",
+    "product_type": "",
+    "tags": ["Essays", "history", "Yusuf Madhiya"],
+    "variants": [
+      {
+        "id": 45479356268698,
+        "title": "Default Title",
+        "sku": "",
+        "available": true,
+        "price": "630.00",
+        "compare_at_price": "699.00",
+        "position": 2,
+        "product_id": 8421872238746
+      }
+    ],
+    "images": [
+      {
+        "id": 42192700899482,
+        "position": 1,
+        "product_id": 8421872238746,
+        "src": "https://cdn.shopify.com/s/files/1/0614/9003/6890/files/HeritageF.jpg?v=1743056641",
+        "width": 1819,
+        "height": 2764
+      }
+    ]
+  }
+}

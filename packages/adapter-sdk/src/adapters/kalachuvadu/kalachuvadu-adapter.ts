@@ -221,6 +221,7 @@ export class KalachuvaduAdapter implements PublisherAdapter {
 
     return {
       sourceRef: raw.sourceRef,
+      sourceSku: null, // no publisher-internal SKU concept on this site
       isbn13,
       title,
       // No discoverable subtitle field on the real detail page — the

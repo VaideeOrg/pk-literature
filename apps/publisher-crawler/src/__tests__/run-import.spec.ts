@@ -5,6 +5,7 @@ import type { StagingIngestClient } from "../staging-ingest-client";
 function makeBook(sourceRef: string, overrides: Partial<CanonicalBook> = {}): CanonicalBook {
   return {
     sourceRef,
+    sourceSku: null,
     isbn13: "9781234567890",
     title: "Some Title",
     subtitle: null,

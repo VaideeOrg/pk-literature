@@ -39,6 +39,7 @@ export interface StagingBookTable {
   publisherId: string;
   sourceRef: string;
   rawPayload: unknown;
+  sourceSku: string | null;
   isbn13: string | null;
   title: string | null;
   subtitle: string | null;

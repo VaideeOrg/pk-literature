@@ -27,29 +27,32 @@ describe("validateBookFields", () => {
     expect(result.issues).toHaveLength(0);
   });
 
-  it("flags every required field as an error when missing", () => {
+  it("errors on missing title/author/language - promote-staging-book can't create a Work/Book without them", () => {
     const result = validateBookFields({
       ...validBook,
       title: null,
       authorNames: [],
-      publisherName: null,
-      price: null,
       language: null,
-      coverSourceUrl: null,
     });
 
     expect(result.hasErrors).toBe(true);
-    const codes = result.issues.map((i) => i.code);
-    expect(codes).toEqual(
-      expect.arrayContaining([
-        "missing_title",
-        "missing_author",
-        "missing_publisher",
-        "missing_price",
-        "missing_language",
-        "missing_cover",
-      ]),
-    );
+    for (const code of ["missing_title", "missing_author", "missing_language"]) {
+      expect(result.issues).toContainEqual(expect.objectContaining({ severity: "error", code }));
+    }
+  });
+
+  it("warns (not errors) on missing publisher/price/cover - promote-staging-book degrades gracefully without them", () => {
+    const result = validateBookFields({
+      ...validBook,
+      publisherName: null,
+      price: null,
+      coverSourceUrl: null,
+    });
+
+    expect(result.hasErrors).toBe(false);
+    for (const code of ["missing_publisher", "missing_price", "missing_cover"]) {
+      expect(result.issues).toContainEqual(expect.objectContaining({ severity: "warning", code }));
+    }
   });
 
   it("warns (not errors) on a missing ISBN", () => {
@@ -66,11 +69,11 @@ describe("validateBookFields", () => {
     );
   });
 
-  it("errors on an unrecognized currency", () => {
+  it("warns (not errors) on an unrecognized currency", () => {
     const result = validateBookFields({ ...validBook, currency: "XXX" });
-    expect(result.hasErrors).toBe(true);
+    expect(result.hasErrors).toBe(false);
     expect(result.issues).toContainEqual(
-      expect.objectContaining({ severity: "error", code: "invalid_currency" }),
+      expect.objectContaining({ severity: "warning", code: "invalid_currency" }),
     );
   });
 

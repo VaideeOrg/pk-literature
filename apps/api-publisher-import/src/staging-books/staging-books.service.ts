@@ -39,6 +39,16 @@ export interface SubmitResult {
 
 @Injectable()
 export class StagingBooksService {
+  // Statuses a re-crawl must never regress. approved/merged both
+  // represent a human decision (or, for merged, its already-applied
+  // result) - editorial state this pipeline should never silently
+  // overwrite just because a publisher's page changed since the last
+  // crawl. Deliberately excludes 'needs_review': submit() itself never
+  // writes that status (only an editor sets it by hand in Directus),
+  // so protecting it too is a separate product decision, not bundled
+  // into this fix.
+  private static readonly PROTECTED_STATUSES = ["approved", "merged"] as const;
+
   constructor(
     @Inject(KYSELY) private readonly db: Kysely<Database>,
     private readonly events: EventBridgeService,
@@ -110,14 +120,42 @@ export class StagingBooksService {
           matchedBookId: eb.ref("excluded.matchedBookId"),
           matchConfidence: eb.ref("excluded.matchConfidence"),
           status: eb.ref("excluded.status"),
-        })),
+        }))
+        // A re-crawl must never regress an already-approved/merged
+        // book. This WHERE is evaluated against the pre-existing row
+        // (Postgres's own DO UPDATE ... WHERE semantics - unqualified
+        // columns there mean the conflicting row, not `excluded`): for
+        // a protected row it's false, which turns the whole conflict
+        // branch into a no-op - no row updated, none returned - rather
+        // than silently overwriting its status *and* content with a
+        // fresh crawl snapshot that could never reach the catalog
+        // anyway (promote-staging-book's idempotency guard keys off
+        // promoted_book_id, not status, so even a re-approval here
+        // would just no-op instead of re-promoting the updated data).
+        .where("status", "not in", StagingBooksService.PROTECTED_STATUSES),
       )
       // xmax = 0 is the standard Postgres tell for "this row was
       // inserted by this statement," not updated via the ON CONFLICT
       // branch — used below to credit newBooks vs updatedBooks
       // accurately instead of assuming every submission is new.
       .returning(["id", sql<boolean>`xmax = 0`.as("wasInserted")])
-      .executeTakeFirstOrThrow();
+      .executeTakeFirst();
+
+    if (!stagingBook) {
+      // The WHERE guard above skipped the update: this (publisherId,
+      // sourceRef) already exists and is approved/merged. Look up its
+      // current id/status instead of treating this as a fresh
+      // submission - no staging_inventory/staging_validation/media
+      // rows, no run counters, no event for a resubmission that was
+      // explicitly declined.
+      const existing = await this.db
+        .selectFrom("staging.stagingBooks")
+        .select(["id", "status"])
+        .where("publisherId", "=", run.publisherId)
+        .where("sourceRef", "=", book.sourceRef)
+        .executeTakeFirstOrThrow();
+      return { stagingBookId: existing.id, status: existing.status, issues: [] };
+    }
 
     if (book.stock !== null || book.price !== null) {
       await this.db

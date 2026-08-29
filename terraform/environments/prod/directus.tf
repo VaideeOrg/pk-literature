@@ -194,6 +194,21 @@ module "ecs_directus" {
     STORAGE_S3_REGION    = data.aws_region.current.name
     EVENTBRIDGE_BUS_NAME = module.eventbridge.bus_name
     WEBSOCKETS_ENABLED   = "false"
+    # Directus's default helmet CSP restricts img-src to 'self' data:
+    # blob: - confirmed live this was silently blocking the image-url
+    # display extension (PR #109/#110): the browser's Network tab shows
+    # no request at all for an external cover URL (a CSP violation is
+    # enforced client-side, before the request is ever sent - not a
+    # 403/404 from the image's own host, which would still show up as
+    # a completed request). Deliberately scoped to just our own CDN
+    # origin, not a blanket https: - bootstrap.ts's
+    # ensureImageThumbnailDisplays() only ever renders images from
+    # staging_media.s3_key/media_assets.s3_key (the already-downloaded,
+    # CDN-servable copy), never the raw externally-crawled publisher
+    # URL, so there's no need to open img-src to arbitrary external
+    # domains at all. Directus's own env-to-config loader uses this
+    # "array:" prefix convention for structured CSP directive values.
+    CONTENT_SECURITY_POLICY_DIRECTIVES__IMG_SRC = "array:'self',data:,blob:,https://cdn.${var.domain_name}"
   }
 
   secrets = {

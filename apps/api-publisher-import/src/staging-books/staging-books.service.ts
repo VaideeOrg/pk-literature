@@ -36,6 +36,18 @@ export interface SubmitResult {
 // verified the same way. Not repeatable via `pnpm test` — there's no
 // CI-provisioned Postgres for this app yet — but the logic ran for
 // real, not just against a mock.
+//
+// The re-crawl guard's ON CONFLICT ... WHERE below was the same story
+// once, and shipped with a real bug from it: an unqualified `.where
+// ("status", ...)` compiled to ambiguous SQL (both the conflicting row
+// and `excluded` expose a `status` column), which only surfaced live
+// against production data — a local Postgres run of this same upsert,
+// before the fix, reproduces the exact "column reference \"status\" is
+// ambiguous" error a real publisher-import run hit. All four cases
+// (fresh insert, a rejected row updating through, and both protected
+// statuses correctly no-op'ing without touching the row) were
+// re-verified against a real Postgres after the eb.ref('staging.
+// stagingBooks.status') fix.
 
 @Injectable()
 export class StagingBooksService {
@@ -123,16 +135,27 @@ export class StagingBooksService {
         }))
         // A re-crawl must never regress an already-approved/merged
         // book. This WHERE is evaluated against the pre-existing row
-        // (Postgres's own DO UPDATE ... WHERE semantics - unqualified
-        // columns there mean the conflicting row, not `excluded`): for
-        // a protected row it's false, which turns the whole conflict
-        // branch into a no-op - no row updated, none returned - rather
-        // than silently overwriting its status *and* content with a
-        // fresh crawl snapshot that could never reach the catalog
-        // anyway (promote-staging-book's idempotency guard keys off
+        // (Postgres's own DO UPDATE ... WHERE semantics - it has access
+        // to both the conflicting row and `excluded`): for a protected
+        // row it's false, which turns the whole conflict branch into a
+        // no-op - no row updated, none returned - rather than silently
+        // overwriting its status *and* content with a fresh crawl
+        // snapshot that could never reach the catalog anyway
+        // (promote-staging-book's idempotency guard keys off
         // promoted_book_id, not status, so even a re-approval here
         // would just no-op instead of re-promoting the updated data).
-        .where("status", "not in", StagingBooksService.PROTECTED_STATUSES),
+        //
+        // MUST be qualified as `staging.stagingBooks.status`, not a
+        // bare "status" - confirmed live (a real production import crash,
+        // "column reference \"status\" is ambiguous") and reproduced
+        // against a real Postgres: both the conflicting row and
+        // `excluded` expose a `status` column at this point, so an
+        // unqualified reference is genuinely ambiguous SQL, not
+        // resolved to "the conflicting row" the way a plain UPDATE's
+        // WHERE would. eb.ref (not the string-overload .where() used
+        // everywhere else in this file) is what lets a table name be
+        // attached here at all.
+        .where((eb) => eb(eb.ref("staging.stagingBooks.status"), "not in", StagingBooksService.PROTECTED_STATUSES)),
       )
       // xmax = 0 is the standard Postgres tell for "this row was
       // inserted by this statement," not updated via the ON CONFLICT

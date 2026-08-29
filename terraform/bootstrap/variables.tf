@@ -19,7 +19,15 @@ variable "state_lock_table_name" {
 variable "github_org" {
   description = "GitHub org/user that owns the repo — scopes the OIDC trust policy."
   type        = string
-  default     = "vaidee"
+  # Repo moved from vaidee/pk-literature to VaideeOrg/pk-literature -
+  # this was never updated to match, so the OIDC trust policy's sub
+  # condition (oidc.tf, gha-publisher-import.tf) only ever matched
+  # "repo:vaidee/pk-literature:..." tokens. Every GitHub Actions
+  # workflow that assumes a gha-deploy-<env> or
+  # gha-publisher-import-<env> role has been failing
+  # AssumeRoleWithWebIdentity since the move, not just this specific
+  # apply - confirmed against a real failing terraform plan run.
+  default = "VaideeOrg"
 }
 
 variable "github_repo" {

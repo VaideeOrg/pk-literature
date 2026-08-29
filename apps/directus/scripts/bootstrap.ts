@@ -155,6 +155,55 @@ const DISCOVERY_COLLECTIONS = ['banners'];
 
 const ALL_COLLECTIONS = [...CATALOG_COLLECTIONS, ...STAGING_COLLECTIONS, ...DISCOVERY_COLLECTIONS];
 
+// Curated Detail-page field orders for ensureReviewFieldOrder - what
+// an editor actually reviews first, everything else (ids, relations,
+// audit timestamps) falls below the "Technical Details" divider.
+const STAGING_BOOKS_REVIEW_ORDER = [
+	'cover_s3_key',
+	'status',
+	'title',
+	'subtitle',
+	'author_names',
+	'publisher_name',
+	'description',
+	'language',
+	'isbn13',
+	'price',
+	'currency',
+	'stock',
+	'category',
+	'publication_date',
+	'edition_label',
+	'page_count',
+];
+
+// works has no cover_asset_id of its own (only catalog.books does -
+// a Work is the abstract literary work, not itself purchasable/
+// coverable; see catalog.sql's own header comment on catalog.books).
+const WORKS_REVIEW_ORDER = [
+	'status',
+	'canonical_title',
+	'canonical_title_translit',
+	'original_language',
+	'work_type',
+	'first_publication_year',
+	'summary',
+];
+
+const BOOKS_REVIEW_ORDER = [
+	'cover_s3_key',
+	'status',
+	'title',
+	'subtitle',
+	'language',
+	'edition_label',
+	'edition_number',
+	'format',
+	'page_count',
+	'publication_date',
+	'isbn13',
+];
+
 async function main() {
 	let client: Client;
 	if (TOKEN) {
@@ -173,10 +222,15 @@ async function main() {
 	await ensurePromotionFlow(client);
 	await ensureInventoryDecrementFlow(client);
 	await ensureImageThumbnailDisplays(client);
-	await ensureApproveButtonInterface(client);
-	await ensureStagingBooksFieldOrder(client);
+	await ensureApproveButtonInterface(client, 'staging_books', 'approved,promoted');
+	await ensureReviewFieldOrder(client, 'staging_books', STAGING_BOOKS_REVIEW_ORDER);
 	await ensureImportRunRelation(client);
 	await ensureBulkApproveFlow(client);
+	await ensureApproveButtonInterface(client, 'works', 'approved,published');
+	await ensureReviewFieldOrder(client, 'works', WORKS_REVIEW_ORDER);
+	await ensurePublishToggleInterface(client);
+	await ensureReviewFieldOrder(client, 'books', BOOKS_REVIEW_ORDER);
+	await ensurePublishToggleBulkFlows(client);
 
 	console.log('Directus bootstrap complete.');
 	// Explicit exit, not a natural fall-through: @directus/sdk's rest()
@@ -222,17 +276,21 @@ async function main() {
  * row, kept in sync by StagingBooksService.submit() every time a cover
  * is stored.
  *
- * readonly is set on the two staging-side fields (never media_assets -
- * a promoted catalog record editors may legitimately need to hand-fix)
- * since both are exclusively system-written by the crawler/storeCover
- * pipeline - never something an editor is expected to hand-type, and
- * the preview interface itself has no editable control anyway.
+ * readonly is set on the staging-side fields and books.cover_s3_key
+ * (never media_assets - a promoted catalog record editors may
+ * legitimately need to hand-fix) since all three are exclusively
+ * system-written (the crawler/storeCover pipeline, or
+ * promote-staging-book's promoteMedia() for books.cover_s3_key -
+ * migration 20260101000024) - never something an editor is expected
+ * to hand-type, and the preview interface itself has no editable
+ * control anyway.
  */
 async function ensureImageThumbnailDisplays(client: Client) {
 	const targets: { collection: string; field: string; urlPrefix: string; readonly?: boolean }[] = [
 		{ collection: 'staging_books', field: 'cover_s3_key', urlPrefix: `${CDN_BASE_URL}/`, readonly: true },
 		{ collection: 'staging_media', field: 's3_key', urlPrefix: `${CDN_BASE_URL}/`, readonly: true },
 		{ collection: 'media_assets', field: 's3_key', urlPrefix: `${CDN_BASE_URL}/` },
+		{ collection: 'books', field: 'cover_s3_key', urlPrefix: `${CDN_BASE_URL}/`, readonly: true },
 	];
 
 	for (const target of targets) {
@@ -291,66 +349,55 @@ async function ensureImageThumbnailDisplays(client: Client) {
 }
 
 /**
- * Replaces the default Select Dropdown on staging_books.status with a
+ * Replaces the default Select Dropdown on a status field with a
  * single Approve action button (extensions/interfaces/approve-button)
- * - editors take one decision (approve), not pick between five equally
- * -weighted raw enum values including 'promoted', which should never
- * be hand-set at all. See that extension's own header comment for why
- * it makes its own PATCH rather than going through the page's Save
- * button.
+ * - editors take one decision (approve), not pick between several
+ * equally-weighted raw enum values, some of which (staging_books'
+ * 'promoted', works'/books' 'published' via the enforce_book_work_
+ * status cascade) should never be hand-set via a plain dropdown at
+ * all. finalStatuses is that extension's own configurable "already
+ * decided" list - see its header comment for why works.status needs
+ * a different one than staging_books.status.
  */
-async function ensureApproveButtonInterface(client: Client) {
-	const field = await client.request(readField('staging_books', 'status'));
-	if (field.meta?.interface === 'approve-button') {
-		console.log('interface staging_books.status: already approve-button');
+async function ensureApproveButtonInterface(client: Client, collection: string, finalStatuses: string) {
+	const field = await client.request(readField(collection, 'status'));
+	if (field.meta?.interface === 'approve-button' && field.meta?.options?.finalStatuses === finalStatuses) {
+		console.log(`interface ${collection}.status: already approve-button (${finalStatuses})`);
 		return;
 	}
 
 	await client.request(
-		updateField('staging_books', 'status', {
-			meta: { interface: 'approve-button', options: null, display: null, display_options: null },
+		updateField(collection, 'status', {
+			meta: {
+				interface: 'approve-button',
+				options: { finalStatuses },
+				display: null,
+				display_options: null,
+			},
 		}),
 	);
-	console.log('interface staging_books.status: set to approve-button');
+	console.log(`interface ${collection}.status: set to approve-button (${finalStatuses})`);
 }
 
 /**
- * Reorders staging_books' Detail-page fields so what an editor
- * actually reviews - cover, the Approve decision, title/metadata -
- * sits at the top, with system/technical fields (IDs, audit
- * timestamps, the raw external cover_source_url now superseded by
- * cover_s3_key) pushed below a labeled divider. Directus renders a
- * plain Detail form purely by each field's own meta.sort, ascending -
- * there's no separate "layout" concept to lean on here, so this is
- * just a full sort-order rewrite every run (cheap, and simpler than
- * tracking partial drift field-by-field).
+ * Reorders a collection's Detail-page fields so what an editor
+ * actually reviews sits at the top, with system/technical fields
+ * (IDs, relations, audit timestamps) pushed below a labeled divider.
+ * Directus renders a plain Detail form purely by each field's own
+ * meta.sort, ascending - there's no separate "layout" concept to lean
+ * on here, so this is just a full sort-order rewrite every run
+ * (cheap, and simpler than tracking partial drift field-by-field).
+ * Shared by staging_books, works, and books - each just supplies its
+ * own curated REVIEW_ORDER.
  */
-async function ensureStagingBooksFieldOrder(client: Client) {
-	const REVIEW_ORDER = [
-		'cover_s3_key',
-		'status',
-		'title',
-		'subtitle',
-		'author_names',
-		'publisher_name',
-		'description',
-		'language',
-		'isbn13',
-		'price',
-		'currency',
-		'stock',
-		'category',
-		'publication_date',
-		'edition_label',
-		'page_count',
-	];
+async function ensureReviewFieldOrder(client: Client, collection: string, reviewOrder: string[]) {
 	const DIVIDER_FIELD = 'technical_details_divider';
 
-	let fields = await client.request(readFieldsByCollection('staging_books'));
+	let fields = await client.request(readFieldsByCollection(collection));
 
 	if (!fields.some((f) => f.field === DIVIDER_FIELD)) {
 		await client.request(
-			createField('staging_books', {
+			createField(collection, {
 				field: DIVIDER_FIELD,
 				type: 'alias',
 				meta: {
@@ -361,27 +408,27 @@ async function ensureStagingBooksFieldOrder(client: Client) {
 				},
 			}),
 		);
-		console.log(`field staging_books.${DIVIDER_FIELD}: created`);
-		fields = await client.request(readFieldsByCollection('staging_books'));
+		console.log(`field ${collection}.${DIVIDER_FIELD}: created`);
+		fields = await client.request(readFieldsByCollection(collection));
 	}
 
 	const desiredOrder = [
-		...REVIEW_ORDER.filter((name) => fields.some((f) => f.field === name)),
+		...reviewOrder.filter((name) => fields.some((f) => f.field === name)),
 		DIVIDER_FIELD,
-		...fields.map((f) => f.field).filter((name) => !REVIEW_ORDER.includes(name) && name !== DIVIDER_FIELD),
+		...fields.map((f) => f.field).filter((name) => !reviewOrder.includes(name) && name !== DIVIDER_FIELD),
 	];
 
 	const currentOrder = [...fields].sort((a, b) => (a.meta?.sort ?? 0) - (b.meta?.sort ?? 0)).map((f) => f.field);
 
 	if (JSON.stringify(currentOrder) === JSON.stringify(desiredOrder)) {
-		console.log('staging_books field order: already correct');
+		console.log(`${collection} field order: already correct`);
 		return;
 	}
 
 	for (const [index, name] of desiredOrder.entries()) {
-		await client.request(updateField('staging_books', name, { meta: { sort: index + 1 } }));
+		await client.request(updateField(collection, name, { meta: { sort: index + 1 } }));
 	}
-	console.log('staging_books field order: review fields on top, technical fields below a divider');
+	console.log(`${collection} field order: review fields on top, technical fields below a divider`);
 }
 
 /**
@@ -540,6 +587,103 @@ async function ensureBulkApproveFlow(client: Client) {
 
 	await client.request(updateFlow(flow.id, { operation: updateStatusOperation.id }));
 	console.log(`flow ${FLOW_NAME}: wired (manual trigger -> set_status_approved)`);
+}
+
+/**
+ * Replaces the default Select Dropdown on catalog.books.status with a
+ * Publish/Unpublish toggle (extensions/interfaces/publish-toggle-button)
+ * - the actual editorial decision a Book review ends with (SPEC-03:
+ * final checks, then publish for sale), not a five-way raw enum
+ * choice. See that extension's own header comment for why it doesn't
+ * pre-approve the parent Work (catalog.sql's enforce_book_work_status
+ * trigger rejects the publish outright if the Work isn't approved yet
+ * - by design, surfaced to the editor rather than silently worked
+ * around) and why Unpublish only ever touches the Book's own status.
+ */
+async function ensurePublishToggleInterface(client: Client) {
+	const field = await client.request(readField('books', 'status'));
+	if (field.meta?.interface === 'publish-toggle-button') {
+		console.log('interface books.status: already publish-toggle-button');
+		return;
+	}
+
+	await client.request(
+		updateField('books', 'status', {
+			meta: { interface: 'publish-toggle-button', options: null, display: null, display_options: null },
+		}),
+	);
+	console.log('interface books.status: set to publish-toggle-button');
+}
+
+/**
+ * Two manual-trigger Flows ("Publish Books" / "Unpublish Books"),
+ * surfaced by Directus as toolbar buttons in books' Browse view once
+ * 1+ rows are selected - same checkbox-selection + toolbar pattern as
+ * ensureBulkApproveFlow, but split into two flows rather than one
+ * toggle: a bulk action on a *mixed* selection (some published, some
+ * not) has to be unambiguous, unlike the single-record toggle button
+ * above which always knows its own current state.
+ */
+async function ensurePublishToggleBulkFlows(client: Client) {
+	const DESIRED_LOCATION = 'both';
+	const flowsToEnsure = [
+		{ name: 'Publish Books', icon: 'publish', status: 'published', key: 'set_status_published' },
+		{ name: 'Unpublish Books', icon: 'unpublished', status: 'draft', key: 'set_status_draft' },
+	] as const;
+
+	for (const { name, icon, status, key } of flowsToEnsure) {
+		const existingFlows = await client.request(readFlows({ filter: { name: { _eq: name } } }));
+		if (existingFlows[0]) {
+			if (existingFlows[0].options?.location !== DESIRED_LOCATION) {
+				await client.request(
+					updateFlow(existingFlows[0].id, {
+						options: { ...existingFlows[0].options, location: DESIRED_LOCATION },
+					}),
+				);
+				console.log(`flow ${name}: options.location corrected to '${DESIRED_LOCATION}'`);
+			} else {
+				console.log(`flow ${name}: already exists`);
+			}
+			continue;
+		}
+
+		const flow = await client.request(
+			createFlow({
+				name,
+				icon,
+				description: `Sets status=${status} on the selected books row(s), the same write the Detail-page Publish/Unpublish button makes.`,
+				status: 'active',
+				trigger: 'manual',
+				accountability: 'all',
+				options: {
+					collections: ['books'],
+					location: DESIRED_LOCATION,
+					requireConfirmation: false,
+				},
+			}),
+		);
+		console.log(`flow ${name}: created`);
+
+		const updateStatusOperation = await client.request(
+			createOperation({
+				name: `Set status = ${status}`,
+				key,
+				type: 'item-update',
+				position_x: 19,
+				position_y: 1,
+				flow: flow.id,
+				options: {
+					collection: 'books',
+					payload: { status },
+					key: '{{$trigger.body.keys}}',
+					emitEvents: true,
+				},
+			}),
+		);
+
+		await client.request(updateFlow(flow.id, { operation: updateStatusOperation.id }));
+		console.log(`flow ${name}: wired (manual trigger -> ${key})`);
+	}
 }
 
 async function ensureCollectionsTracked(client: Client) {

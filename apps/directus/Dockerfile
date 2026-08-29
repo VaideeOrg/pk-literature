@@ -115,14 +115,26 @@ RUN npm install
 COPY extensions/interfaces/image-url-preview/ ./
 RUN npm run build
 
-# Replaces the default Select Dropdown on staging_books.status. See
-# extensions/interfaces/approve-button/src/index.ts's own header
+# Replaces the default Select Dropdown on a status field with a
+# single decisive Approve action (staging_books.status, works.status).
+# See extensions/interfaces/approve-button/src/index.ts's own header
 # comment.
 FROM node:20-bookworm-slim AS extension-build-approve-button
 WORKDIR /build
 COPY extensions/interfaces/approve-button/package.json ./
 RUN npm install
 COPY extensions/interfaces/approve-button/ ./
+RUN npm run build
+
+# Publish/Unpublish toggle for catalog.books.status - two-way, unlike
+# approve-button's one-way ratchet. See
+# extensions/interfaces/publish-toggle-button/src/index.ts's own
+# header comment.
+FROM node:20-bookworm-slim AS extension-build-publish-toggle-button
+WORKDIR /build
+COPY extensions/interfaces/publish-toggle-button/package.json ./
+RUN npm install
+COPY extensions/interfaces/publish-toggle-button/ ./
 RUN npm run build
 
 FROM directus/directus:${DIRECTUS_VERSION}
@@ -139,3 +151,5 @@ COPY --from=extension-build-image-url-preview /build/dist /directus/extensions/i
 COPY --from=extension-build-image-url-preview /build/package.json /directus/extensions/image-url-preview/package.json
 COPY --from=extension-build-approve-button /build/dist /directus/extensions/approve-button/dist
 COPY --from=extension-build-approve-button /build/package.json /directus/extensions/approve-button/package.json
+COPY --from=extension-build-publish-toggle-button /build/dist /directus/extensions/publish-toggle-button/dist
+COPY --from=extension-build-publish-toggle-button /build/package.json /directus/extensions/publish-toggle-button/package.json

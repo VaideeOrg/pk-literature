@@ -142,7 +142,12 @@ async function promoteMedia(
 		.merge(['content_type', 'checksum_sha256', 'source_url'])
 		.returning('id');
 
-	await trx('catalog.books').where({ id: bookId }).update({ cover_asset_id: asset.id });
+	// cover_s3_key (migration 20260101000024) is a denormalized copy of
+	// destKey, kept in sync alongside cover_asset_id - see that
+	// migration's own comment for why (Directus's Table/Card layouts
+	// can't render a thumbnail from a related collection's field, the
+	// same reasoning staging_books.cover_s3_key already goes on).
+	await trx('catalog.books').where({ id: bookId }).update({ cover_asset_id: asset.id, cover_s3_key: destKey });
 }
 
 /**

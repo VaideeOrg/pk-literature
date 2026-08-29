@@ -51,15 +51,16 @@ export interface SubmitResult {
 
 @Injectable()
 export class StagingBooksService {
-  // Statuses a re-crawl must never regress. approved/merged both
-  // represent a human decision (or, for merged, its already-applied
-  // result) - editorial state this pipeline should never silently
+  // Statuses a re-crawl must never regress. approved/promoted both
+  // represent a human decision (or, for promoted, its already-applied
+  // result - migration 20260101000023 renamed this status from
+  // 'merged') - editorial state this pipeline should never silently
   // overwrite just because a publisher's page changed since the last
   // crawl. Deliberately excludes 'needs_review': submit() itself never
   // writes that status (only an editor sets it by hand in Directus),
   // so protecting it too is a separate product decision, not bundled
   // into this fix.
-  private static readonly PROTECTED_STATUSES = ["approved", "merged"] as const;
+  private static readonly PROTECTED_STATUSES = ["approved", "promoted"] as const;
 
   constructor(
     @Inject(KYSELY) private readonly db: Kysely<Database>,
@@ -133,7 +134,7 @@ export class StagingBooksService {
           matchConfidence: eb.ref("excluded.matchConfidence"),
           status: eb.ref("excluded.status"),
         }))
-        // A re-crawl must never regress an already-approved/merged
+        // A re-crawl must never regress an already-approved/promoted
         // book. This WHERE is evaluated against the pre-existing row
         // (Postgres's own DO UPDATE ... WHERE semantics - it has access
         // to both the conflicting row and `excluded`): for a protected
@@ -166,7 +167,7 @@ export class StagingBooksService {
 
     if (!stagingBook) {
       // The WHERE guard above skipped the update: this (publisherId,
-      // sourceRef) already exists and is approved/merged. Look up its
+      // sourceRef) already exists and is approved/promoted. Look up its
       // current id/status instead of treating this as a fresh
       // submission - no staging_inventory/staging_validation/media
       // rows, no run counters, no event for a resubmission that was

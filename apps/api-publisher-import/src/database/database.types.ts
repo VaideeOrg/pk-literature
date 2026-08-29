@@ -15,7 +15,7 @@ import type { ColumnType, Generated } from "kysely";
 // full mirrors of every column on catalog.books/publishers.
 
 export type ImportRunStatus = "running" | "completed" | "failed" | "partially_failed";
-export type StagingBookStatus = "pending_validation" | "needs_review" | "approved" | "rejected" | "merged";
+export type StagingBookStatus = "pending_validation" | "needs_review" | "approved" | "rejected" | "promoted";
 export type MediaStatus = "pending" | "downloaded" | "virus_scanned" | "optimized" | "uploaded" | "failed";
 export type ValidationSeverity = "warning" | "error";
 

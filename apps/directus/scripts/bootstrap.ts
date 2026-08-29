@@ -480,9 +480,26 @@ async function ensureImportRunRelation(client: Client) {
  */
 async function ensureBulkApproveFlow(client: Client) {
 	const FLOW_NAME = 'Approve Staging Books';
+	const DESIRED_LOCATION = 'both';
 	const existingFlows = await client.request(readFlows({ filter: { name: { _eq: FLOW_NAME } } }));
 	if (existingFlows[0]) {
-		console.log(`flow ${FLOW_NAME}: already exists`);
+		// Options drift correction, not just an existence check - this
+		// flow originally shipped with location: 'item' (wrong: that
+		// only ever surfaces on a single record's Detail page, never
+		// the Browse/Table view's bulk-select toolbar this flow is
+		// actually for), and a bare existence check would have left
+		// that wrong value in place forever across every future
+		// bootstrap re-run.
+		if (existingFlows[0].options?.location !== DESIRED_LOCATION) {
+			await client.request(
+				updateFlow(existingFlows[0].id, {
+					options: { ...existingFlows[0].options, location: DESIRED_LOCATION },
+				}),
+			);
+			console.log(`flow ${FLOW_NAME}: options.location corrected to '${DESIRED_LOCATION}'`);
+		} else {
+			console.log(`flow ${FLOW_NAME}: already exists`);
+		}
 		return;
 	}
 
@@ -497,7 +514,7 @@ async function ensureBulkApproveFlow(client: Client) {
 			accountability: 'all',
 			options: {
 				collections: ['staging_books'],
-				location: 'item',
+				location: DESIRED_LOCATION,
 				requireConfirmation: false,
 			},
 		}),

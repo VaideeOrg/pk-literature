@@ -103,6 +103,18 @@ RUN npm install
 COPY extensions/displays/image-url/ ./
 RUN npm run build
 
+# Companion to the Display above: a Display only ever renders inside
+# Table/list cells, never the record Detail/Edit page - that's a
+# separate Directus extension type (Interface) entirely. See
+# extensions/interfaces/image-url-preview/src/index.ts's own header
+# comment.
+FROM node:20-bookworm-slim AS extension-build-image-url-preview
+WORKDIR /build
+COPY extensions/interfaces/image-url-preview/package.json ./
+RUN npm install
+COPY extensions/interfaces/image-url-preview/ ./
+RUN npm run build
+
 FROM directus/directus:${DIRECTUS_VERSION}
 COPY --from=extension-build /build/dist /directus/extensions/eventbridge-put-event/dist
 COPY --from=extension-build /build/package.json /directus/extensions/eventbridge-put-event/package.json
@@ -113,3 +125,5 @@ COPY --from=extension-build-decrement /build/dist /directus/extensions/decrement
 COPY --from=extension-build-decrement /build/package.json /directus/extensions/decrement-inventory-stock/package.json
 COPY --from=extension-build-image-url-display /build/dist /directus/extensions/image-url-display/dist
 COPY --from=extension-build-image-url-display /build/package.json /directus/extensions/image-url-display/package.json
+COPY --from=extension-build-image-url-preview /build/dist /directus/extensions/image-url-preview/dist
+COPY --from=extension-build-image-url-preview /build/package.json /directus/extensions/image-url-preview/package.json

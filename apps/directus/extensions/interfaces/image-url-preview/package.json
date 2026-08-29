@@ -1,0 +1,22 @@
+{
+  "name": "directus-extension-image-url-preview",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Directus interface: shows a text field's value as an image preview on the record's Detail/Edit page, read-only - the value itself is system-written (crawler/promotion pipeline), never hand-typed by an editor. Companion to the image-url display (same value/URL-prefix rendering, but for the edit form rather than list/detail table cells, which Displays never reach).",
+  "keywords": ["directus", "directus-extension", "directus-custom-interface"],
+  "directus:extension": {
+    "type": "interface",
+    "path": "dist/index.js",
+    "source": "src/index.ts",
+    "host": "^11.0.0 || ^12.0.0"
+  },
+  "scripts": {
+    "build": "directus-extension build",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@directus/extensions-sdk": "^12.1.0",
+    "typescript": "^5.6.3",
+    "vue": "^3.4.0"
+  }
+}

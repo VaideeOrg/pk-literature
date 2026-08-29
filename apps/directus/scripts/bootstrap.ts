@@ -181,12 +181,16 @@ async function main() {
 }
 
 /**
- * Wires the image-url display extension onto every field that holds a
- * cover image reference actually resolvable to a real, servable file —
- * an S3 key served through our own CDN — so editors can actually see a
- * book's cover without leaving Directus. Deliberately NOT wired onto
- * staging_books.cover_source_url or staging_media.source_url: both
- * hold the raw externally-crawled publisher URL, and Directus's CSP
+ * Wires the image-url display AND its companion image-url-preview
+ * interface onto every field that holds a cover image reference
+ * actually resolvable to a real, servable file — an S3 key served
+ * through our own CDN — so editors can see a book's cover without
+ * leaving Directus, on both the Table/list view (Display) and the
+ * record's own Detail/Edit page (Interface - a Display never renders
+ * there, it's a wholly separate Directus extension type). Deliberately
+ * NOT wired onto staging_books.cover_source_url or
+ * staging_media.source_url: both hold the raw externally-crawled
+ * publisher URL, and Directus's CSP
  * (terraform/environments/prod/directus.tf's
  * CONTENT_SECURITY_POLICY_DIRECTIVES__IMG_SRC) only allows img-src
  * from our own CDN origin, not arbitrary external domains — confirmed
@@ -207,30 +211,48 @@ async function main() {
  * editorial workflow PR #109 was built for) is a real column on that
  * row, kept in sync by StagingBooksService.submit() every time a cover
  * is stored.
+ *
+ * readonly is set on the two staging-side fields (never media_assets -
+ * a promoted catalog record editors may legitimately need to hand-fix)
+ * since both are exclusively system-written by the crawler/storeCover
+ * pipeline - never something an editor is expected to hand-type, and
+ * the preview interface itself has no editable control anyway.
  */
 async function ensureImageThumbnailDisplays(client: Client) {
-	const targets: { collection: string; field: string; urlPrefix: string }[] = [
-		{ collection: 'staging_books', field: 'cover_s3_key', urlPrefix: `${CDN_BASE_URL}/` },
-		{ collection: 'staging_media', field: 's3_key', urlPrefix: `${CDN_BASE_URL}/` },
+	const targets: { collection: string; field: string; urlPrefix: string; readonly?: boolean }[] = [
+		{ collection: 'staging_books', field: 'cover_s3_key', urlPrefix: `${CDN_BASE_URL}/`, readonly: true },
+		{ collection: 'staging_media', field: 's3_key', urlPrefix: `${CDN_BASE_URL}/`, readonly: true },
 		{ collection: 'media_assets', field: 's3_key', urlPrefix: `${CDN_BASE_URL}/` },
 	];
 
 	for (const target of targets) {
 		const current = await client.request(readField(target.collection, target.field));
-		if (current.meta?.display === 'image-url') {
-			console.log(`display ${target.collection}.${target.field}: already set to image-url`);
+		const alreadyCorrect =
+			current.meta?.display === 'image-url' &&
+			current.meta?.interface === 'image-url-preview' &&
+			(!target.readonly || current.meta?.readonly === true);
+		if (alreadyCorrect) {
+			console.log(`display/interface ${target.collection}.${target.field}: already set`);
 			continue;
 		}
 
 		await client.request(
 			updateField(target.collection, target.field, {
 				meta: {
+					interface: 'image-url-preview',
+					// The interface's own options live on `options`, not a
+					// separate "interface_options" key - display_options is
+					// the display's equivalent, but the SDK's DirectusField
+					// type has no such field for interfaces (confirmed by
+					// tsc: only `options` exists alongside `display_options`).
+					options: { urlPrefix: target.urlPrefix },
 					display: 'image-url',
 					display_options: { urlPrefix: target.urlPrefix },
+					...(target.readonly ? { readonly: true } : {}),
 				},
 			}),
 		);
-		console.log(`display ${target.collection}.${target.field}: set to image-url`);
+		console.log(`display/interface ${target.collection}.${target.field}: set to image-url/image-url-preview`);
 	}
 
 	// staging_books.cover_source_url and staging_media.source_url were

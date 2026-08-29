@@ -197,9 +197,20 @@ async function main() {
  * coverSourceUrl is set, so the actual servable copy always exists by
  * the time a staging book does — render that instead of opening CSP up
  * to every publisher's domain.
+ *
+ * staging_books.cover_s3_key (migration
+ * 20260101000022_staging_books_cover_s3_key.sql) is a denormalized
+ * write-through of the same value onto staging_books itself -
+ * Directus's Table/Card layouts can't reach into a *related*
+ * collection's field to render a thumbnail, so the only way to show a
+ * cover directly on the staging_books browse table (the actual
+ * editorial workflow PR #109 was built for) is a real column on that
+ * row, kept in sync by StagingBooksService.submit() every time a cover
+ * is stored.
  */
 async function ensureImageThumbnailDisplays(client: Client) {
 	const targets: { collection: string; field: string; urlPrefix: string }[] = [
+		{ collection: 'staging_books', field: 'cover_s3_key', urlPrefix: `${CDN_BASE_URL}/` },
 		{ collection: 'staging_media', field: 's3_key', urlPrefix: `${CDN_BASE_URL}/` },
 		{ collection: 'media_assets', field: 's3_key', urlPrefix: `${CDN_BASE_URL}/` },
 	];

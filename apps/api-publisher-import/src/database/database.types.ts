@@ -47,6 +47,12 @@ export interface StagingBookTable {
   description: string | null;
   language: string | null;
   coverSourceUrl: string | null;
+  // Write-through'd from staging.staging_media.s3_key whenever
+  // storeCover() succeeds - see migration
+  // 20260101000022_staging_books_cover_s3_key.sql for why this
+  // denormalized copy exists instead of Directus reaching into the
+  // related staging_media row directly.
+  coverS3Key: string | null;
   price: string | null; // numeric(10,2) — returned as string, same reasoning as api-catalog's InventoryTable.price
   currency: string | null;
   stock: number | null;

@@ -177,7 +177,19 @@ export class StagingBooksService {
     }
 
     if (dto.cover) {
-      await this.storeCover(stagingBook.id, dto.cover);
+      // Write-through, not just an insert into staging_media: Directus
+      // can't render a thumbnail on the staging_books browse table from
+      // a *related* collection's field (see bootstrap.ts's
+      // ensureImageThumbnailDisplays() comment) - cover_s3_key is a
+      // denormalized copy kept in sync with whatever the latest
+      // successfully-stored cover is, every time this book is
+      // (re)submitted with one.
+      const { s3Key } = await this.storeCover(stagingBook.id, dto.cover);
+      await this.db
+        .updateTable("staging.stagingBooks")
+        .set({ coverS3Key: s3Key })
+        .where("id", "=", stagingBook.id)
+        .execute();
     }
 
     await this.updateRunCounters(runId, status === "rejected", stagingBook.wasInserted);
@@ -240,7 +252,7 @@ export class StagingBooksService {
     return { matchedWorkId: null, matchedBookId: null, matchConfidence: null, duplicateIssue: null };
   }
 
-  private async storeCover(stagingBookId: string, cover: CoverUploadDto): Promise<void> {
+  private async storeCover(stagingBookId: string, cover: CoverUploadDto): Promise<{ s3Key: string }> {
     const bytes = Buffer.from(cover.bytesBase64, "base64");
     const { s3Key, checksumSha256 } = await this.mediaStorage.storeStagingCover(
       stagingBookId,
@@ -266,6 +278,8 @@ export class StagingBooksService {
         checksumSha256,
       })
       .execute();
+
+    return { s3Key };
   }
 
   private async updateRunCounters(runId: string, rejected: boolean, wasInserted: boolean): Promise<void> {

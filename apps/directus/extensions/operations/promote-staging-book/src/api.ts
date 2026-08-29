@@ -280,7 +280,7 @@ export default defineOperationApi<Options>({
 			}
 
 			// Idempotency guard: also covers the case where a Flow
-			// re-fires on a staging_book that's already 'merged' (e.g.
+			// re-fires on a staging_book that's already 'promoted' (e.g.
 			// status re-set to 'approved' by mistake after promotion) -
 			// promoted_book_id being set is the source of truth, not
 			// status alone.
@@ -403,7 +403,7 @@ export default defineOperationApi<Options>({
 			// accountability context), in which case promoted_by stays
 			// null rather than the promotion failing outright.
 			await trx('staging.staging_books').where({ id: stagingBookId }).update({
-				status: 'merged',
+				status: 'promoted',
 				promoted_work_id: workId,
 				promoted_book_id: bookId,
 				promoted_by: accountability?.user ?? null,

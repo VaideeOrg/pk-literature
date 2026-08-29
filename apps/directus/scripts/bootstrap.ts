@@ -51,7 +51,13 @@ import {
 	createOperation,
 	updateOperation,
 	readField,
+	readFieldsByCollection,
 	updateField,
+	createField,
+	readCollection,
+	updateCollection,
+	readPresets,
+	createPreset,
 } from '@directus/sdk';
 
 function requireEnv(name: string): string {
@@ -167,6 +173,10 @@ async function main() {
 	await ensurePromotionFlow(client);
 	await ensureInventoryDecrementFlow(client);
 	await ensureImageThumbnailDisplays(client);
+	await ensureApproveButtonInterface(client);
+	await ensureStagingBooksFieldOrder(client);
+	await ensureImportRunRelation(client);
+	await ensureBulkApproveFlow(client);
 
 	console.log('Directus bootstrap complete.');
 	// Explicit exit, not a natural fall-through: @directus/sdk's rest()
@@ -278,6 +288,241 @@ async function ensureImageThumbnailDisplays(client: Client) {
 		);
 		console.log(`display ${target.collection}.${target.field}: reverted from image-url to none`);
 	}
+}
+
+/**
+ * Replaces the default Select Dropdown on staging_books.status with a
+ * single Approve action button (extensions/interfaces/approve-button)
+ * - editors take one decision (approve), not pick between five equally
+ * -weighted raw enum values including 'promoted', which should never
+ * be hand-set at all. See that extension's own header comment for why
+ * it makes its own PATCH rather than going through the page's Save
+ * button.
+ */
+async function ensureApproveButtonInterface(client: Client) {
+	const field = await client.request(readField('staging_books', 'status'));
+	if (field.meta?.interface === 'approve-button') {
+		console.log('interface staging_books.status: already approve-button');
+		return;
+	}
+
+	await client.request(
+		updateField('staging_books', 'status', {
+			meta: { interface: 'approve-button', options: null, display: null, display_options: null },
+		}),
+	);
+	console.log('interface staging_books.status: set to approve-button');
+}
+
+/**
+ * Reorders staging_books' Detail-page fields so what an editor
+ * actually reviews - cover, the Approve decision, title/metadata -
+ * sits at the top, with system/technical fields (IDs, audit
+ * timestamps, the raw external cover_source_url now superseded by
+ * cover_s3_key) pushed below a labeled divider. Directus renders a
+ * plain Detail form purely by each field's own meta.sort, ascending -
+ * there's no separate "layout" concept to lean on here, so this is
+ * just a full sort-order rewrite every run (cheap, and simpler than
+ * tracking partial drift field-by-field).
+ */
+async function ensureStagingBooksFieldOrder(client: Client) {
+	const REVIEW_ORDER = [
+		'cover_s3_key',
+		'status',
+		'title',
+		'subtitle',
+		'author_names',
+		'publisher_name',
+		'description',
+		'language',
+		'isbn13',
+		'price',
+		'currency',
+		'stock',
+		'category',
+		'publication_date',
+		'edition_label',
+		'page_count',
+	];
+	const DIVIDER_FIELD = 'technical_details_divider';
+
+	let fields = await client.request(readFieldsByCollection('staging_books'));
+
+	if (!fields.some((f) => f.field === DIVIDER_FIELD)) {
+		await client.request(
+			createField('staging_books', {
+				field: DIVIDER_FIELD,
+				type: 'alias',
+				meta: {
+					special: ['alias', 'no-data'],
+					interface: 'presentation-divider',
+					options: { title: 'Technical Details', icon: 'settings' },
+					width: 'full',
+				},
+			}),
+		);
+		console.log(`field staging_books.${DIVIDER_FIELD}: created`);
+		fields = await client.request(readFieldsByCollection('staging_books'));
+	}
+
+	const desiredOrder = [
+		...REVIEW_ORDER.filter((name) => fields.some((f) => f.field === name)),
+		DIVIDER_FIELD,
+		...fields.map((f) => f.field).filter((name) => !REVIEW_ORDER.includes(name) && name !== DIVIDER_FIELD),
+	];
+
+	const currentOrder = [...fields].sort((a, b) => (a.meta?.sort ?? 0) - (b.meta?.sort ?? 0)).map((f) => f.field);
+
+	if (JSON.stringify(currentOrder) === JSON.stringify(desiredOrder)) {
+		console.log('staging_books field order: already correct');
+		return;
+	}
+
+	for (const [index, name] of desiredOrder.entries()) {
+		await client.request(updateField('staging_books', name, { meta: { sort: index + 1 } }));
+	}
+	console.log('staging_books field order: review fields on top, technical fields below a divider');
+}
+
+/**
+ * Wires staging_books.import_run_id as a real Many-to-One relation to
+ * import_runs. Postgres already has this FK (migration
+ * 20260101000004_staging_init.sql) - Directus's own schema
+ * introspection auto-detects the relation once both collections are
+ * tracked, this just gives the field a real picker interface instead
+ * of showing the bare uuid as plain text, and gives import_runs a
+ * human-readable display template + a newest-first default sort, so
+ * both the relation picker and import_runs' own Browse view read as
+ * "2026-08-29T02:34:06 — scheduled" instead of a raw UUID column.
+ *
+ * NOT verified live whether the default preset below also governs the
+ * *Filter panel's* relational picker sort specifically (staging_books
+ * -> filter by Import Run), as opposed to just import_runs' own
+ * Browse table - both draw on the same collection/sort concept but
+ * this repo has no way to run the real admin app to confirm which
+ * paths actually consult it. Worth checking after deploy; the
+ * picker's own search-by-typing still works regardless of default
+ * order if it isn't picked up.
+ */
+async function ensureImportRunRelation(client: Client) {
+	const DISPLAY_TEMPLATE = '{{started_at}} — {{trigger}}';
+
+	const field = await client.request(readField('staging_books', 'import_run_id'));
+	if (field.meta?.interface !== 'select-dropdown-m2o') {
+		await client.request(
+			updateField('staging_books', 'import_run_id', {
+				meta: {
+					interface: 'select-dropdown-m2o',
+					special: ['m2o'],
+					display: 'related-values',
+					display_options: { template: DISPLAY_TEMPLATE },
+				},
+			}),
+		);
+		console.log('field staging_books.import_run_id: wired as many-to-one -> import_runs');
+	} else {
+		console.log('field staging_books.import_run_id: already many-to-one');
+	}
+
+	const collection = await client.request(readCollection('import_runs'));
+	if (collection.meta?.display_template !== DISPLAY_TEMPLATE || collection.meta?.sort_field !== 'started_at') {
+		await client.request(
+			updateCollection('import_runs', {
+				meta: { display_template: DISPLAY_TEMPLATE, sort_field: 'started_at' },
+			}),
+		);
+		console.log('collection import_runs: display template + sort field set');
+	} else {
+		console.log('collection import_runs: display template + sort field already set');
+	}
+
+	// A "default" preset - no bookmark/user/role - is Directus's
+	// fallback view for anyone without their own saved layout.
+	const existingDefaultPreset = await client.request(
+		readPresets({
+			filter: {
+				collection: { _eq: 'import_runs' },
+				bookmark: { _null: true },
+				user: { _null: true },
+				role: { _null: true },
+			},
+		}),
+	);
+	if (!existingDefaultPreset[0]) {
+		await client.request(
+			createPreset({
+				collection: 'import_runs',
+				layout: 'tabular',
+				layout_query: { tabular: { sort: ['-started_at'] } },
+			}),
+		);
+		console.log('preset import_runs: default newest-first sort created');
+	} else {
+		console.log('preset import_runs: default sort already exists');
+	}
+}
+
+/**
+ * Manual-trigger Flow, surfaced by Directus as a toolbar button in
+ * staging_books' Browse view once 1+ rows are selected (reusing the
+ * checkbox selection already built into the Table layout) - sets
+ * status='approved' on every selected row, the exact same write the
+ * Detail-page Approve button makes. Deliberately does NOT duplicate
+ * promote-staging-book's own logic: ensurePromotionFlow is an
+ * items.update event Flow, so it fires identically regardless of
+ * which path caused the write.
+ *
+ * NOT verified live: the built-in "Update Data" operation's type key
+ * (item-update) and options shape below, and the manual trigger's own
+ * options shape - Directus's Flow/Operation `options` are untyped
+ * (Record<string, any>) in the SDK, or opaque to their app UI
+ * implementation, verifiable now that live Directus access exists.
+ */
+async function ensureBulkApproveFlow(client: Client) {
+	const FLOW_NAME = 'Approve Staging Books';
+	const existingFlows = await client.request(readFlows({ filter: { name: { _eq: FLOW_NAME } } }));
+	if (existingFlows[0]) {
+		console.log(`flow ${FLOW_NAME}: already exists`);
+		return;
+	}
+
+	const flow = await client.request(
+		createFlow({
+			name: FLOW_NAME,
+			icon: 'check_circle',
+			description:
+				'Sets status=approved on the selected staging_books row(s), triggering Promote Staging Book the same as the Detail-page Approve button.',
+			status: 'active',
+			trigger: 'manual',
+			accountability: 'all',
+			options: {
+				collections: ['staging_books'],
+				location: 'item',
+				requireConfirmation: false,
+			},
+		}),
+	);
+	console.log(`flow ${FLOW_NAME}: created`);
+
+	const updateStatusOperation = await client.request(
+		createOperation({
+			name: 'Set status = approved',
+			key: 'set_status_approved',
+			type: 'item-update',
+			position_x: 19,
+			position_y: 1,
+			flow: flow.id,
+			options: {
+				collection: 'staging_books',
+				payload: { status: 'approved' },
+				key: '{{$trigger.body.keys}}',
+				emitEvents: true,
+			},
+		}),
+	);
+
+	await client.request(updateFlow(flow.id, { operation: updateStatusOperation.id }));
+	console.log(`flow ${FLOW_NAME}: wired (manual trigger -> set_status_approved)`);
 }
 
 async function ensureCollectionsTracked(client: Client) {

@@ -1,0 +1,22 @@
+{
+  "name": "directus-extension-approve-button",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Directus interface: a single Approve action button for staging_books.status, replacing the raw enum dropdown. PATCHes status to 'approved' immediately on click (triggering the promotion Flow) rather than deferring to the page's own Save button, then shows a disabled 'Approved' label once the status is 'approved' or 'promoted'.",
+  "keywords": ["directus", "directus-extension", "directus-custom-interface"],
+  "directus:extension": {
+    "type": "interface",
+    "path": "dist/index.js",
+    "source": "src/index.ts",
+    "host": "^11.0.0 || ^12.0.0"
+  },
+  "scripts": {
+    "build": "directus-extension build",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@directus/extensions-sdk": "^12.1.0",
+    "typescript": "^5.6.3",
+    "vue": "^3.4.0"
+  }
+}

@@ -45,7 +45,7 @@ CREATE INDEX idx_import_runs_publisher_id ON staging.import_runs (publisher_id);
 -- ---------------------------------------------------------------------
 
 CREATE TYPE staging.staging_book_status AS ENUM (
-  'pending_validation', 'needs_review', 'approved', 'rejected', 'merged'
+  'pending_validation', 'needs_review', 'approved', 'rejected', 'promoted'
 );
 
 CREATE TABLE staging.staging_books (

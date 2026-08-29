@@ -82,7 +82,9 @@ describe("runImport", () => {
     expect(summary.booksProcessed).toBe(2);
     expect(summary.booksFailed).toBe(0);
     expect(client.submitBook).toHaveBeenCalledTimes(2);
-    expect(client.completeImportRun).toHaveBeenCalledWith("run-1", "completed", expect.any(String), null);
+    // Reached the true end of the catalogue (nextPageCursor: null) -
+    // persists a clean null cursor, not a fabricated timestamp.
+    expect(client.completeImportRun).toHaveBeenCalledWith("run-1", "completed", null, null);
   });
 
   it("follows pagination across multiple pages", async () => {
@@ -127,7 +129,11 @@ describe("runImport", () => {
     expect(summary.status).toBe("partially_failed");
     expect(summary.booksProcessed).toBe(1);
     expect(summary.booksFailed).toBe(1);
-    expect(client.completeImportRun).toHaveBeenCalledWith("run-1", "partially_failed", expect.any(String), null);
+    // Still reached the true end of the catalogue despite the failure -
+    // a partially_failed run (some books succeeded) still advances the
+    // watermark, per ADR-009; only a total failure (status "failed")
+    // doesn't.
+    expect(client.completeImportRun).toHaveBeenCalledWith("run-1", "partially_failed", null, null);
   });
 
   it("marks the run failed and skips the cursor write-back when discover() fails entirely", async () => {
@@ -230,14 +236,16 @@ describe("runImport", () => {
       expect(discover).toHaveBeenCalledTimes(2);
     });
 
-    it("does not advance the cursor when the run was cut short by the limit", async () => {
+    it("persists a resume cursor (page cursor + in-page offset) when the run was cut short by the limit", async () => {
+      // Cursor starts as null (page 1) - the limit is hit inside that
+      // same page, before nextPageCursor is ever reached.
       const adapter = makeAdapter({
         discover: jest.fn().mockResolvedValueOnce({
           refs: [
             { sourceRef: "book-1", sourceUrl: "https://x/1" },
             { sourceRef: "book-2", sourceUrl: "https://x/2" },
           ],
-          nextPageCursor: null,
+          nextPageCursor: "2", // would be the next page - never reached this run
         }),
       });
       const client = makeClient();
@@ -251,7 +259,66 @@ describe("runImport", () => {
         maxBooks: 1,
       });
 
+      // pageCursor is still null (the cursor used to fetch *this* page,
+      // not discovery.nextPageCursor) - skip:1 records that the first
+      // ref of that same page was already processed.
+      expect(client.completeImportRun).toHaveBeenCalledWith(
+        "run-1",
+        "completed",
+        JSON.stringify({ pageCursor: null, skip: 1 }),
+        null,
+      );
+    });
+
+    it("resumes from exactly where a previous maxBooks-limited run left off, mid-page", async () => {
+      // Simulates the real bug this fixes: a page far larger than
+      // maxBooks (Ethirveliyeedu/Yaavarum fetch up to 250 at once) - a
+      // naive "persist the page cursor only" fix would re-fetch this
+      // same page and hit the cap at the same book every time, never
+      // progressing. skip:1 must cause book-1 to be skipped.
+      const discover = jest.fn().mockResolvedValueOnce({
+        refs: [
+          { sourceRef: "book-1", sourceUrl: "https://x/1" },
+          { sourceRef: "book-2", sourceUrl: "https://x/2" },
+          { sourceRef: "book-3", sourceUrl: "https://x/3" },
+        ],
+        nextPageCursor: null,
+      });
+      const adapter = makeAdapter({ discover });
+      const client = makeClient({
+        getCursor: jest.fn().mockResolvedValue({ cursor: JSON.stringify({ pageCursor: null, skip: 1 }), lastImportAt: null }),
+      });
+
+      const summary = await runImport({
+        publisherId: "pub-1",
+        trigger: "manual",
+        adapter,
+        client,
+        logger: silentLogger,
+      });
+
+      expect(discover).toHaveBeenCalledWith(null); // re-fetches the same page (no per-page offset param exists)
+      expect(client.submitBook).toHaveBeenCalledTimes(2); // only book-2 and book-3 - book-1 was skipped
+      expect(client.submitBook).not.toHaveBeenCalledWith("run-1", expect.objectContaining({ sourceRef: "book-1" }), null);
+      expect(summary.booksProcessed).toBe(2);
+      // Reached the true end of the catalogue this time - clean null, not a resume cursor.
       expect(client.completeImportRun).toHaveBeenCalledWith("run-1", "completed", null, null);
+    });
+
+    it("treats an unrecognized stored cursor (e.g. a pre-fix fabricated timestamp) as a fresh start", async () => {
+      const discover = jest.fn().mockResolvedValueOnce({
+        refs: [{ sourceRef: "book-1", sourceUrl: "https://x/1" }],
+        nextPageCursor: null,
+      });
+      const adapter = makeAdapter({ discover });
+      const client = makeClient({
+        getCursor: jest.fn().mockResolvedValue({ cursor: "2026-01-01T00:00:00.000Z", lastImportAt: null }),
+      });
+
+      await runImport({ publisherId: "pub-1", trigger: "manual", adapter, client, logger: silentLogger });
+
+      expect(discover).toHaveBeenCalledWith(null);
+      expect(client.submitBook).toHaveBeenCalledTimes(1);
     });
   });
 });

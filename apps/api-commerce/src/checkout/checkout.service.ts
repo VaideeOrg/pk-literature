@@ -15,7 +15,13 @@ import { OrdersService } from "../orders/orders.service";
 // real shipping-cost calculation, which is out of scope for this
 // phase. Disclosed here rather than silently hardcoded with no
 // explanation.
-const FLAT_SHIPPING_COST = 50;
+//
+// Configurable via SHIPPING_COST (plain number, in the order's own
+// currency — same one-value-per-deployment shape as FEATURE_PAY_LATER)
+// because the flat rate itself differs by storefront: puthagakadai.com
+// defaults to 50 (INR), puthagakadai.sg's Terraform overrides this to
+// "3" (SGD).
+const FLAT_SHIPPING_COST = Number(process.env.SHIPPING_COST ?? "50");
 
 @Injectable()
 export class CheckoutService {

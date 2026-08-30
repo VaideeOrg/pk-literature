@@ -188,6 +188,12 @@ CREATE INDEX idx_order_items_order_id ON commerce.order_items (order_id);
 -- SPEC-06's "Idempotent payment processing" principle at the DB level,
 -- not just in application logic — a retried/duplicated webhook
 -- delivery for the same Razorpay event can't create a second row.
+--
+-- `provider` is free text with no hardcoded list (default 'razorpay')
+-- so puthagakadai.sg's zero-gateway 'pay_later' option needed no new
+-- enum value here — just razorpay_order_id going nullable (migration
+-- 20260401000009), since a pay_later row has no Razorpay order to
+-- reference.
 -- ---------------------------------------------------------------------
 
 CREATE TYPE commerce.payment_status AS ENUM ('created', 'captured', 'failed', 'refunded');
@@ -196,7 +202,7 @@ CREATE TABLE commerce.payments (
   id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   order_id           uuid NOT NULL REFERENCES commerce.orders(id),
   provider           text NOT NULL DEFAULT 'razorpay',
-  razorpay_order_id  text NOT NULL,
+  razorpay_order_id  text,                  -- NULL for provider='pay_later'; see migration 20260401000009
   razorpay_payment_id text,
   razorpay_signature text,
   amount             numeric(10,2) NOT NULL,

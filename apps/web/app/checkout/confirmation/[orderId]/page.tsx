@@ -4,9 +4,21 @@ import { serverFetch } from "@/lib/api/server-fetch";
 import { getOrder } from "@/lib/api/commerce";
 import { ApiError } from "@/lib/api/problem-details";
 
-export default async function OrderConfirmationPage({ params }: { params: Promise<{ orderId: string }> }) {
+export default async function OrderConfirmationPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ orderId: string }>;
+  searchParams: Promise<{ method?: string }>;
+}) {
   const { orderId } = await params;
+  const { method } = await searchParams;
   const order = await getOrderOr404(orderId);
+  // Set by checkout-form.tsx's redirect right after POST
+  // /payments/pay-later succeeds — there's no webhook to wait for with
+  // this method, so the generic "confirmation can take a moment"
+  // copy below would be actively misleading here.
+  const isPayLater = method === "pay_later";
 
   return (
     <div className="mx-auto max-w-xl text-center">
@@ -15,11 +27,15 @@ export default async function OrderConfirmationPage({ params }: { params: Promis
         Order <span className="font-mono">{order.orderNumber}</span> is{" "}
         <span className="font-medium">{order.status.replace("_", " ")}</span>.
       </p>
-      {order.status === "pending_payment" && (
-        <p className="mt-2 text-sm text-muted-foreground">
-          Payment confirmation can take a moment to arrive — refresh this page shortly if the status above still says
-          &ldquo;pending payment&rdquo;.
-        </p>
+      {isPayLater ? (
+        <p className="mt-2 text-sm text-muted-foreground">Pay in cash when you collect your order.</p>
+      ) : (
+        order.status === "pending_payment" && (
+          <p className="mt-2 text-sm text-muted-foreground">
+            Payment confirmation can take a moment to arrive — refresh this page shortly if the status above still says
+            &ldquo;pending payment&rdquo;.
+          </p>
+        )
       )}
       <ul className="mt-8 flex flex-col divide-y divide-border text-left">
         {order.items.map((item) => (

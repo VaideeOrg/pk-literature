@@ -6,6 +6,7 @@ import type {
   GetCartResponse,
   GetOrderResponse,
   ListOrdersResponse,
+  PayLaterResponse,
   RemoveCartItemResponse,
   UpsertCartItemRequest,
   UpsertCartItemResponse,
@@ -35,6 +36,10 @@ export function checkout(fetcher: Fetcher, body: CheckoutRequest): Promise<Check
 
 export function createPaymentOrder(fetcher: Fetcher, orderId: string): Promise<CreatePaymentOrderResponse> {
   return fetcher("/v1/payments/create-order", { method: "POST", body: JSON.stringify({ orderId }) });
+}
+
+export function payLater(fetcher: Fetcher, orderId: string): Promise<PayLaterResponse> {
+  return fetcher("/v1/payments/pay-later", { method: "POST", body: JSON.stringify({ orderId }) });
 }
 
 export function listOrders(fetcher: Fetcher, page = 1, pageSize = 20): Promise<ListOrdersResponse> {

@@ -1,9 +1,10 @@
 import { Body, Controller, Headers, Post, Req } from "@nestjs/common";
 import type { RawBodyRequest } from "@nestjs/common";
 import type { Request } from "express";
-import type { CreatePaymentOrderResponse, WebhookAck } from "@pk-literature/contracts";
+import type { CreatePaymentOrderResponse, PayLaterResponse, WebhookAck } from "@pk-literature/contracts";
 import { PaymentsService, verifyWebhookOrThrow } from "./payments.service";
 import { CreatePaymentOrderDto } from "./dto/create-payment-order.dto";
+import { PayLaterDto } from "./dto/pay-later.dto";
 import { ValidationProblem } from "../common/problem-details.exception";
 
 @Controller("payments")
@@ -13,6 +14,11 @@ export class PaymentsController {
   @Post("create-order")
   async createOrder(@Body() dto: CreatePaymentOrderDto): Promise<CreatePaymentOrderResponse> {
     return this.payments.createPaymentOrder(dto.orderId);
+  }
+
+  @Post("pay-later")
+  async payLater(@Body() dto: PayLaterDto): Promise<PayLaterResponse> {
+    return this.payments.payLater(dto.orderId);
   }
 
   @Post("webhook")

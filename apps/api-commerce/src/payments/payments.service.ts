@@ -87,6 +87,66 @@ export class PaymentsService {
   }
 
   /**
+   * The zero-gateway alternative to createPaymentOrder — puthagakadai.sg
+   * doesn't have (or want) a payment gateway configured at all;
+   * placing the order commits it, payment is collected in person
+   * later. Gated by FEATURE_PAY_LATER (same on/off-per-deployment
+   * pattern as apps/api-feed's FEATURE_* flags) so puthagakadai.com
+   * can't accidentally expose this even if a client called it directly.
+   *
+   * No Razorpay round trip, no webhook — so unlike createPaymentOrder,
+   * this is the *only* step for this payment method: the payments row
+   * (provider='pay_later') is created immediately, and stock comes off
+   * catalog.inventory right away too, for the same reason
+   * InventoryDecrementRequestedEvent's own doc comment already gives
+   * for Medusa's walk-in-sale channels — "no separate payment captured
+   * moment exists for that channel" — pay_later has no captured moment
+   * either; the order is committed at placement, cash changes hands at
+   * pickup. The order itself deliberately stays 'pending_payment' — a
+   * first-class 'pending_collection'-style status is a follow-up
+   * (migration not required for now); a store keeper marks it 'paid'
+   * through the existing admin flow once collected.
+   */
+  async payLater(orderId: string): Promise<{ orderId: string; provider: "pay_later" }> {
+    if (process.env.FEATURE_PAY_LATER !== "true") {
+      throw new ValidationProblem("Pay Later is not available in this deployment.");
+    }
+
+    const order = await this.db
+      .selectFrom("commerce.orders")
+      .select(["id", "status", "total", "currency"])
+      .where("id", "=", orderId)
+      .executeTakeFirst();
+    if (!order) throw new NotFoundProblem("Order", orderId);
+    if (order.status !== "pending_payment") {
+      throw new ValidationProblem(`Order ${orderId} is not awaiting payment (status: ${order.status}).`);
+    }
+
+    await this.db
+      .insertInto("commerce.payments")
+      .values({
+        orderId: order.id,
+        provider: "pay_later",
+        razorpayOrderId: null,
+        amount: order.total,
+        currency: order.currency,
+        status: "created",
+        idempotencyKey: randomUUID(),
+      })
+      .execute();
+
+    const items = await this.db
+      .selectFrom("commerce.orderItems")
+      .select(["bookId", "quantity"])
+      .where("orderId", "=", order.id)
+      .execute();
+    const decrementEvent: InventoryDecrementRequestedEvent = { orderId: order.id, channel: "online", items };
+    await this.events.publish("InventoryDecrementRequested", decrementEvent);
+
+    return { orderId: order.id, provider: "pay_later" };
+  }
+
+  /**
    * SPEC-06: "Webhook verification is mandatory before marking an
    * order Paid. Browser callbacks are advisory only." — signature
    * verification happens in the controller (needs the raw body, which

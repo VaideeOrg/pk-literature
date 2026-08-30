@@ -100,7 +100,7 @@ export interface PaymentTable {
   id: Generated<string>;
   orderId: string;
   provider: string;
-  razorpayOrderId: string;
+  razorpayOrderId: string | null; // NULL for provider='pay_later' - see migration 20260401000009
   razorpayPaymentId: string | null;
   razorpaySignature: string | null;
   amount: string;

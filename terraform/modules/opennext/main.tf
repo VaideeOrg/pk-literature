@@ -13,7 +13,7 @@
 # future phase adds any statically-generated route back.
 
 resource "aws_s3_bucket" "static_assets" {
-  bucket        = "pk-literature-${var.environment}-web-static"
+  bucket        = "pk-literature-${var.environment}-${var.service_name}-static"
   force_destroy = true
 
   tags = {
@@ -47,7 +47,7 @@ module "server_lambda" {
   source = "../lambda-service"
 
   environment  = var.environment
-  service_name = "web-server"
+  service_name = "${var.service_name}-server"
 
   filename         = var.server_zip_path
   source_code_hash = var.server_zip_hash
@@ -74,7 +74,7 @@ module "image_lambda" {
   source = "../lambda-service"
 
   environment  = var.environment
-  service_name = "web-image"
+  service_name = "${var.service_name}-image"
 
   filename         = var.image_zip_path
   source_code_hash = var.image_zip_hash

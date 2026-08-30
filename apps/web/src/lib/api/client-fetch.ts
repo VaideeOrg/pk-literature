@@ -3,6 +3,12 @@
 import { throwIfProblem } from "./problem-details";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3000";
+// See server-fetch.ts's MARKET for the non-NEXT_PUBLIC server-side
+// copy — this one needs the prefix because Client Components run this
+// in the browser, where only values inlined at `next build` time
+// (package-opennext.sh's exported shell env, per this app's own
+// NEXT_PUBLIC_* convention) are visible.
+const MARKET = process.env.NEXT_PUBLIC_MARKET;
 
 function readCookie(name: string): string | undefined {
   const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
@@ -29,6 +35,7 @@ export async function clientFetch<T>(path: string, init?: RequestInit): Promise<
     headers: {
       "content-type": "application/json",
       ...(anonymousId && { "x-anonymous-id": anonymousId }),
+      ...(MARKET && { "x-market": MARKET }),
       ...init?.headers,
     },
   });

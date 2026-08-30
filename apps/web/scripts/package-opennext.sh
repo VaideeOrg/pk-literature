@@ -17,7 +17,21 @@
 # doesn't model that well, so it's a separate step in
 # .github/workflows/terraform-apply.yml (after `terraform apply`), not
 # something this script or Terraform itself does.
+#
+# Optional $1: an output suffix, e.g. "sg" -> dist-server-lambda-sg.zip
+# / dist-image-lambda-sg.zip. puthagakadai.sg needs its own build (not
+# just its own Terraform deployment of the same artifact) because this
+# app has no static/ISR pages — everything is `dynamic = "force-dynamic"`
+# (app/layout.tsx) — so NEXT_PUBLIC_MARKET/NEXT_PUBLIC_FEATURE_PAY_LATER
+# etc. can't be deferred to runtime the way a server-only env var could;
+# they're baked into the client bundle at `next build` time by whatever
+# NEXT_PUBLIC_* values are exported in the shell before this script
+# runs. Called twice in CI with two different env exports — see
+# .github/workflows/terraform-apply.yml.
 set -euo pipefail
+
+SUFFIX="${1:-}"
+SUFFIX_TAG="${SUFFIX:+-$SUFFIX}"
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROOT_DIR="$(cd "$APP_DIR/../.." && pwd)"
@@ -51,9 +65,9 @@ package() {
 }
 
 echo "==> Zipping server function"
-package "$OPEN_NEXT_DIR/server-functions/default" "$APP_DIR/dist-server-lambda.zip"
+package "$OPEN_NEXT_DIR/server-functions/default" "$APP_DIR/dist-server-lambda${SUFFIX_TAG}.zip"
 
 echo "==> Zipping image optimization function"
-package "$OPEN_NEXT_DIR/image-optimization-function" "$APP_DIR/dist-image-lambda.zip"
+package "$OPEN_NEXT_DIR/image-optimization-function" "$APP_DIR/dist-image-lambda${SUFFIX_TAG}.zip"
 
 echo "==> Static assets to sync separately (not zipped): $OPEN_NEXT_DIR/assets"

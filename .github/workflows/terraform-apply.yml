@@ -29,10 +29,13 @@ name: Deploy
 # medusa_image_tag by hand) — it goes through the same approval gate.
 #
 # App deploy steps beyond api-catalog: apps/web's OpenNext packages are
-# built here (scripts/package-opennext.sh) and, after `terraform apply`
-# creates/updates the S3 bucket + CloudFront distribution, the built
-# .open-next/assets get synced to that bucket and the distribution
-# invalidated — see the last two steps below. Directus/Medusa images
+# built here (scripts/package-opennext.sh) TWICE — once for
+# puthagakadai.com, once for puthagakadai.sg (own NEXT_PUBLIC_* values
+# baked in at build time, see that script's own header comment) — and,
+# after `terraform apply` creates/updates each storefront's S3 bucket +
+# CloudFront distribution, the built assets get synced to that bucket
+# and the distribution invalidated — see the last four steps below.
+# Directus/Medusa images
 # are NOT built/deployed by this workflow at all — those are gated,
 # manual-trigger-only workflows (build-directus-image.yml/
 # build-medusa-image.yml), run separately before bumping
@@ -149,10 +152,17 @@ jobs:
         run: bash scripts/package-lambda.sh
         working-directory: apps/migration-runner
 
-      # Also caches .open-next/assets, not just the two Lambda zips —
-      # the "Sync OpenNext static assets to S3" step below needs that
-      # directory too, and a skipped build would otherwise leave it
-      # missing.
+      # Also caches a snapshot of .open-next/assets, not just the two
+      # Lambda zips — the "Sync OpenNext static assets to S3" step
+      # below needs that directory too, and a skipped build would
+      # otherwise leave it missing. Snapshotted to its own
+      # .open-next-assets directory (copied right after the build step
+      # below) rather than caching .open-next/assets directly — that
+      # path gets overwritten in-place by the SG build's own `open-next
+      # build` run later in this same job, so relying on it surviving
+      # until the sync step runs, unmutated, would silently sync the
+      # wrong storefront's assets whenever cache hits/misses landed on
+      # different sides for the two builds.
       - name: Cache apps/web OpenNext packages
         id: cache-web
         uses: actions/cache@v4
@@ -160,7 +170,7 @@ jobs:
           path: |
             apps/web/dist-server-lambda.zip
             apps/web/dist-image-lambda.zip
-            apps/web/.open-next/assets
+            apps/web/.open-next-assets
           # web-opennext-2, not web-opennext: bumped once, deliberately,
           # to force a cache miss on every existing entry - this key used
           # to hash only source files, not the NEXT_PUBLIC_* build-time
@@ -175,7 +185,14 @@ jobs:
           # the two hardcoded domain literals below aren't (GitHub
           # Actions cache keys can't hash literal strings, only files) -
           # bump this prefix again if either of those ever changes.
-          key: web-opennext-2-${{ vars.RAZORPAY_KEY_ID_PROD }}-${{ hashFiles('apps/web/app/**', 'apps/web/src/**', 'apps/web/middleware.ts', 'apps/web/*.config.*', 'apps/web/package.json', 'apps/web/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/ui/src/**', 'packages/ui/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
+          #
+          # web-opennext-3, not -2: bumped again for the same reason as
+          # the first bump - the cached path changed from
+          # .open-next/assets to .open-next-assets (see this step's own
+          # comment above), and an old entry under the -2 key was saved
+          # without that directory at all, so restoring it here would
+          # silently leave the sync step with no assets to upload.
+          key: web-opennext-3-${{ vars.RAZORPAY_KEY_ID_PROD }}-${{ hashFiles('apps/web/app/**', 'apps/web/src/**', 'apps/web/middleware.ts', 'apps/web/*.config.*', 'apps/web/package.json', 'apps/web/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/ui/src/**', 'packages/ui/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
       # Next.js inlines NEXT_PUBLIC_* into the client bundle at `next
       # build` time (web.tf's own header comment already documented
       # this requirement - this step just never actually did it).
@@ -205,7 +222,49 @@ jobs:
           NEXT_PUBLIC_API_BASE_URL: https://api.puthagakadai.com
           NEXT_PUBLIC_CDN_HOST: cdn.puthagakadai.com
           NEXT_PUBLIC_RAZORPAY_KEY_ID: ${{ vars.RAZORPAY_KEY_ID_PROD }}
-        run: bash scripts/package-opennext.sh
+        run: |
+          bash scripts/package-opennext.sh
+          # Snapshot before the SG build below overwrites .open-next/assets
+          # in place — see "Cache apps/web OpenNext packages"'s own comment.
+          rm -rf .open-next-assets
+          cp -r .open-next/assets .open-next-assets
+        working-directory: apps/web
+
+      # puthagakadai.sg — same codebase, a second build because
+      # NEXT_PUBLIC_* values are baked into the client bundle at
+      # `next build` time (this app has no static/ISR page to defer
+      # that to runtime for — see package-opennext.sh's own header
+      # comment). Same API_BASE_URL/CDN_HOST as the .com build above:
+      # one shared backend, one shared media CDN, two storefronts.
+      # No RAZORPAY_KEY_ID — puthagakadai.sg has no payment gateway
+      # configured at all, FEATURE_PAY_LATER is its only checkout path.
+      - name: Cache apps/web OpenNext packages (SG)
+        id: cache-web-sg
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/web/dist-server-lambda-sg.zip
+            apps/web/dist-image-lambda-sg.zip
+            apps/web/.open-next-sg-assets
+          key: web-sg-opennext-1-${{ hashFiles('apps/web/app/**', 'apps/web/src/**', 'apps/web/middleware.ts', 'apps/web/*.config.*', 'apps/web/package.json', 'apps/web/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/ui/src/**', 'packages/ui/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
+      - name: Build apps/web OpenNext packages (SG)
+        if: steps.cache-web-sg.outputs.cache-hit != 'true'
+        env:
+          NEXT_PUBLIC_API_BASE_URL: https://api.puthagakadai.com
+          NEXT_PUBLIC_CDN_HOST: cdn.puthagakadai.com
+          NEXT_PUBLIC_FEATURE_PAY_LATER: "true"
+          NEXT_PUBLIC_MARKET: SG
+        run: |
+          bash scripts/package-opennext.sh sg
+          # Snapshot immediately, same reasoning as the .com build step
+          # above — .open-next/assets is a shared, overwritten-in-place
+          # path (unlike dist-*-lambda-sg.zip, already uniquely named),
+          # so each build in this job copies its own output out under a
+          # build-specific name right away rather than leaving anything
+          # that runs later free to clobber it first. See "Cache
+          # apps/web OpenNext packages"'s own comment.
+          rm -rf .open-next-sg-assets
+          cp -r .open-next/assets .open-next-sg-assets
         working-directory: apps/web
 
       - uses: hashicorp/setup-terraform@v3
@@ -237,7 +296,7 @@ jobs:
         working-directory: terraform/environments/prod
         run: |
           BUCKET=$(terraform output -raw web_static_assets_bucket_id)
-          ASSETS_DIR="../../../apps/web/.open-next/assets"
+          ASSETS_DIR="../../../apps/web/.open-next-assets"
           CHANGED=0
           # _next/static/* is content-hashed by Next.js itself (a build
           # producing different output gets a different filename), so it's
@@ -286,6 +345,40 @@ jobs:
         working-directory: terraform/environments/prod
         run: |
           DIST_ID=$(terraform output -raw web_distribution_id)
+          aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
+
+      - name: Sync OpenNext static assets to S3 (SG)
+        id: sync-assets-sg
+        working-directory: terraform/environments/prod
+        run: |
+          BUCKET=$(terraform output -raw web_sg_static_assets_bucket_id)
+          ASSETS_DIR="../../../apps/web/.open-next-sg-assets"
+          CHANGED=0
+          SYNC_OUTPUT=$(aws s3 sync "$ASSETS_DIR" "s3://$BUCKET" \
+            --delete \
+            --size-only \
+            --exclude "_next/static/*" \
+            --cache-control "public,max-age=0,must-revalidate")
+          echo "$SYNC_OUTPUT"
+          if [ -n "$SYNC_OUTPUT" ]; then
+            CHANGED=1
+          fi
+          if [ -d "$ASSETS_DIR/_next/static" ]; then
+            SYNC_OUTPUT_STATIC=$(aws s3 sync "$ASSETS_DIR/_next/static" "s3://$BUCKET/_next/static" \
+              --delete \
+              --size-only \
+              --cache-control "public,max-age=31536000,immutable")
+            echo "$SYNC_OUTPUT_STATIC"
+            if [ -n "$SYNC_OUTPUT_STATIC" ]; then
+              CHANGED=1
+            fi
+          fi
+          echo "changed=$CHANGED" >> "$GITHUB_OUTPUT"
+      - name: Invalidate apps/web CloudFront distribution (SG)
+        if: steps.sync-assets-sg.outputs.changed == '1'
+        working-directory: terraform/environments/prod
+        run: |
+          DIST_ID=$(terraform output -raw web_sg_distribution_id)
           aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
 
   smoke-test:

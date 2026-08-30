@@ -3,6 +3,13 @@ import { cookies } from "next/headers";
 import { throwIfProblem } from "./problem-details";
 
 const API_BASE_URL = process.env.API_BASE_URL ?? "http://localhost:3000";
+// Unset for puthagakadai.com (api-catalog treats a missing header as
+// the default INR/price market). puthagakadai.sg's Terraform sets this
+// to "SG" as a plain Lambda runtime env var — unlike NEXT_PUBLIC_*
+// values, this only needs to be known server-side, so it doesn't need
+// baking into the client bundle at build time the way client-fetch.ts's
+// copy does.
+const MARKET = process.env.MARKET;
 
 /**
  * Server Components can't rely on the browser to attach cookies the
@@ -28,6 +35,7 @@ export async function serverFetch<T>(path: string, init?: RequestInit): Promise<
       "content-type": "application/json",
       ...(anonymousId && { "x-anonymous-id": anonymousId }),
       ...(cookieHeader && { cookie: cookieHeader }),
+      ...(MARKET && { "x-market": MARKET }),
       ...init?.headers,
     },
     // Every page here reads live per-request state (cart, auth,

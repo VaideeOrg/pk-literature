@@ -2,6 +2,17 @@ variable "environment" {
   type = string
 }
 
+# Defaults to "web" — same reasoning as modules/opennext's own
+# service_name variable (added alongside it): keeps every existing
+# prod/qa/dev instantiation byte-identical (same OAC names, same cache
+# policy name — both unique-per-account resources), and lets a second
+# storefront (puthagakadai.sg) instantiate this module again as
+# service_name = "web-sg" without colliding on those names.
+variable "service_name" {
+  type    = string
+  default = "web"
+}
+
 variable "domain_name" {
   type = string
 }

@@ -112,3 +112,18 @@ variable "coming_soon_mode" {
   type        = bool
   default     = true
 }
+
+# --- puthagakadai.sg (web-sg.tf) — same backend as domain_name above,
+# its own frontend hosting only. ---
+
+variable "create_hosted_zone_sg" {
+  description = "true to create a new Route53 hosted zone for domain_name_sg, false to look up an existing one."
+  type        = bool
+  default     = true
+}
+
+variable "coming_soon_mode_sg" {
+  description = "Same purpose as coming_soon_mode, independent toggle since puthagakadai.sg launches on its own timeline."
+  type        = bool
+  default     = true
+}

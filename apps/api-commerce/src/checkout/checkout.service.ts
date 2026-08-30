@@ -16,12 +16,25 @@ import { OrdersService } from "../orders/orders.service";
 // phase. Disclosed here rather than silently hardcoded with no
 // explanation.
 //
-// Configurable via SHIPPING_COST (plain number, in the order's own
-// currency — same one-value-per-deployment shape as FEATURE_PAY_LATER)
-// because the flat rate itself differs by storefront: puthagakadai.com
-// defaults to 50 (INR), puthagakadai.sg's Terraform overrides this to
-// "3" (SGD).
-const FLAT_SHIPPING_COST = Number(process.env.SHIPPING_COST ?? "50");
+// Keyed by the order's own currency, not a single deployment-wide env
+// var — puthagakadai.com and puthagakadai.sg share this one
+// api-commerce Lambda (one backend, two storefronts), so a plain
+// env var can't hold two different defaults for the two storefronts at
+// once the way it can for something that really is per-deployment
+// (FEATURE_TRENDING_SHELF and friends). Currency is already the right
+// signal to key off of: cart.service.ts's upsertItem() only ever
+// snapshots SGD line items when the request actually carried
+// X-Market: SG (migration 20260101000028's price_sgd), so a cart's
+// currency already reflects which storefront it was built on by the
+// time checkout reads it back. SHIPPING_COST defaults to 50 (INR,
+// puthagakadai.com's rate); SHIPPING_COST_SG defaults to 3 (SGD,
+// puthagakadai.sg's rate) — both configurable on the same shared
+// Lambda simultaneously, since they're two different env var names,
+// not two deployments of the same one.
+function shippingCostFor(currency: string): number {
+  if (currency === "SGD") return Number(process.env.SHIPPING_COST_SG ?? "3");
+  return Number(process.env.SHIPPING_COST ?? "50");
+}
 
 @Injectable()
 export class CheckoutService {
@@ -41,8 +54,9 @@ export class CheckoutService {
     await this.validateInventory(items);
 
     const subtotal = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-    const total = subtotal + FLAT_SHIPPING_COST;
     const currency = items[0]!.currency;
+    const shippingCost = shippingCostFor(currency);
+    const total = subtotal + shippingCost;
 
     const shippingAddressId = await this.insertAddress(request.shippingAddress);
     const billingAddressId = request.billingAddress ? await this.insertAddress(request.billingAddress) : shippingAddressId;
@@ -65,7 +79,7 @@ export class CheckoutService {
           status: "pending_payment",
           channel: "online",
           subtotal: String(subtotal),
-          shippingCost: String(FLAT_SHIPPING_COST),
+          shippingCost: String(shippingCost),
           total: String(total),
           currency,
           shippingAddressId,

@@ -84,10 +84,11 @@ module "lambda_api_commerce" {
     RAZORPAY_KEY_SECRET_SECRET_ARN     = module.secrets_manager.razorpay_key_secret_secret_arn
     RAZORPAY_WEBHOOK_SECRET_SECRET_ARN = module.secrets_manager.razorpay_webhook_secret_secret_arn
 
-    FEATURE_PAY_LATER = "false"
-
-    # puthagakadai.sg's prod-sg environment overrides this to "3" (SGD).
-    SHIPPING_COST = "50"
+    # See prod/api-commerce.tf's own comment on why these are single
+    # shared values, not a per-deployment override.
+    PAY_LATER_ENABLED_MARKETS = "SG"
+    SHIPPING_COST             = "50"
+    SHIPPING_COST_SG          = "3"
   }
 
   additional_policy_json = data.aws_iam_policy_document.api_commerce_task.json

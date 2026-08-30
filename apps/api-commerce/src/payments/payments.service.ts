@@ -90,9 +90,20 @@ export class PaymentsService {
    * The zero-gateway alternative to createPaymentOrder — puthagakadai.sg
    * doesn't have (or want) a payment gateway configured at all;
    * placing the order commits it, payment is collected in person
-   * later. Gated by FEATURE_PAY_LATER (same on/off-per-deployment
-   * pattern as apps/api-feed's FEATURE_* flags) so puthagakadai.com
-   * can't accidentally expose this even if a client called it directly.
+   * later.
+   *
+   * Gated by the request's own X-Market header, not a single
+   * deployment-wide flag — puthagakadai.com and puthagakadai.sg share
+   * this one api-commerce Lambda (one backend, two storefronts), so a
+   * plain on/off env var can't hold two different defaults for the two
+   * storefronts at once the way it can for something that really is
+   * per-deployment (FEATURE_TRENDING_SHELF and friends). PAY_LATER_
+   * ENABLED_MARKETS (comma-separated, defaults to just "SG") is still
+   * configurable without a redeploy — it just lists which X-Market
+   * values may use this endpoint, on the one Lambda both storefronts
+   * share. puthagakadai.com structurally can't match: server-fetch.ts's
+   * MARKET env var is unset for that build, so its requests never carry
+   * X-Market at all, regardless of what this list contains.
    *
    * No Razorpay round trip, no webhook — so unlike createPaymentOrder,
    * this is the *only* step for this payment method: the payments row
@@ -107,9 +118,16 @@ export class PaymentsService {
    * (migration not required for now); a store keeper marks it 'paid'
    * through the existing admin flow once collected.
    */
-  async payLater(orderId: string): Promise<{ orderId: string; provider: "pay_later" }> {
-    if (process.env.FEATURE_PAY_LATER !== "true") {
-      throw new ValidationProblem("Pay Later is not available in this deployment.");
+  async payLater(
+    orderId: string,
+    market: string | undefined,
+  ): Promise<{ orderId: string; provider: "pay_later" }> {
+    const allowedMarkets = (process.env.PAY_LATER_ENABLED_MARKETS ?? "SG")
+      .split(",")
+      .map((m) => m.trim().toUpperCase())
+      .filter(Boolean);
+    if (!market || !allowedMarkets.includes(market.toUpperCase())) {
+      throw new ValidationProblem("Pay Later is not available in this market.");
     }
 
     const order = await this.db

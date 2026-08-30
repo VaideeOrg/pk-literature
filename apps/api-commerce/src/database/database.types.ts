@@ -155,6 +155,7 @@ export interface CatalogInventoryTable {
   stock: number;
   price: string;
   currency: string;
+  priceSgd: string | null; // puthagakadai.sg override, always SGD - see apps/api-catalog/migrations/20260101000028
   availability: string;
 }
 

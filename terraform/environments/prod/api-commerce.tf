@@ -87,13 +87,16 @@ module "lambda_api_commerce" {
     RAZORPAY_KEY_SECRET_SECRET_ARN     = module.secrets_manager.razorpay_key_secret_secret_arn
     RAZORPAY_WEBHOOK_SECRET_SECRET_ARN = module.secrets_manager.razorpay_webhook_secret_secret_arn
 
-    # puthagakadai.sg's prod-sg environment overrides this to "true" —
-    # see FEATURE_TRENDING_SHELF/FEATURE_PERSONALIZED_SHELVES in
-    # api-feed.tf for the same plain-env-var toggle pattern.
-    FEATURE_PAY_LATER = "false"
-
-    # puthagakadai.sg's prod-sg environment overrides this to "3" (SGD).
-    SHIPPING_COST = "50"
+    # One shared Lambda serves both storefronts (puthagakadai.com and
+    # puthagakadai.sg) - see payments.service.ts's payLater() and
+    # checkout.service.ts's shippingCostFor() for why these are each a
+    # single value here rather than a per-deployment override the way
+    # FEATURE_TRENDING_SHELF/FEATURE_PERSONALIZED_SHELVES (api-feed.tf)
+    # are: puthagakadai.com structurally can't match either one (its
+    # requests never carry X-Market or get an SGD-denominated cart).
+    PAY_LATER_ENABLED_MARKETS = "SG"
+    SHIPPING_COST             = "50"
+    SHIPPING_COST_SG          = "3"
   }
 
   additional_policy_json   = data.aws_iam_policy_document.api_commerce_task.json

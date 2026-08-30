@@ -17,8 +17,11 @@ export class PaymentsController {
   }
 
   @Post("pay-later")
-  async payLater(@Body() dto: PayLaterDto): Promise<PayLaterResponse> {
-    return this.payments.payLater(dto.orderId);
+  async payLater(
+    @Body() dto: PayLaterDto,
+    @Headers("x-market") market?: string,
+  ): Promise<PayLaterResponse> {
+    return this.payments.payLater(dto.orderId, market);
   }
 
   @Post("webhook")

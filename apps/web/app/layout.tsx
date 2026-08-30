@@ -38,6 +38,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <SearchBox />
             </div>
             <nav className="hidden items-center gap-4 text-sm md:flex">
+              <Link href="/feed" className="text-muted-foreground hover:text-foreground">
+                Feed
+              </Link>
               <Link href="/browse" className="text-muted-foreground hover:text-foreground">
                 Browse
               </Link>
@@ -50,6 +53,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <CartLink />
               <MobileNavToggle>
                 <SearchBox />
+                <Link href="/feed" className="text-sm text-muted-foreground hover:text-foreground">
+                  Feed
+                </Link>
                 <Link href="/browse" className="text-sm text-muted-foreground hover:text-foreground">
                   Browse
                 </Link>

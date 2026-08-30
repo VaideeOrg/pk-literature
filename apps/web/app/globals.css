@@ -22,6 +22,15 @@
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
   --radius: 0.5rem;
+  /* Brand accent — red & white, per product direction. Deliberately
+     its own token rather than a reuse of --destructive: both happen
+     to sit in the red hue family, but --destructive is semantic
+     (errors, "Unavailable") and --brand is identity (price, primary
+     actions) — kept lower-chroma/darker than --destructive so the two
+     stay visually distinct where they appear near each other (e.g. a
+     reel slide's price next to an "Unavailable" label). */
+  --brand: oklch(0.5 0.19 27);
+  --brand-foreground: oklch(0.985 0 0);
 }
 
 @theme inline {
@@ -39,6 +48,8 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

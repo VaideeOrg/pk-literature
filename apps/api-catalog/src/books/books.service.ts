@@ -83,13 +83,30 @@ export class BooksService {
     return map;
   }
 
-  private toInventory(row: {
-    stock: number;
-    price: string;
-    currency: string;
-    availability: Inventory["availability"];
-  } | null): Inventory | null {
+  // market is the X-Market request header (see books.controller.ts) —
+  // "SG" reads catalog.inventory.price_sgd/'SGD' instead of the base
+  // price/currency (puthagakadai.sg storefront, migration
+  // 20260101000028). A null price_sgd is treated exactly like the
+  // no-inventory-row case below (whole inventory comes back null) -
+  // "not yet priced for SG" and "not in stock anywhere" both correctly
+  // fall through to the same existing "no price = unavailable"
+  // convention downstream (BookCard, checkout validation), with no new
+  // UI state needed.
+  private toInventory(
+    row: {
+      stock: number;
+      price: string;
+      currency: string;
+      priceSgd: string | null;
+      availability: Inventory["availability"];
+    } | null,
+    market: string | undefined,
+  ): Inventory | null {
     if (!row) return null;
+    if (market?.toUpperCase() === "SG") {
+      if (row.priceSgd === null) return null;
+      return { stock: row.stock, price: Number(row.priceSgd), currency: "SGD", availability: row.availability };
+    }
     return {
       stock: row.stock,
       price: Number(row.price),
@@ -101,6 +118,7 @@ export class BooksService {
   async list(
     pagination: PaginationDto,
     filter: ListBooksFilter,
+    market: string | undefined,
   ): Promise<{ items: BookListItem[]; totalItems: number }> {
     let query = this.db
       .selectFrom("catalog.books")
@@ -142,6 +160,7 @@ export class BooksService {
           "catalog.inventory.stock",
           "catalog.inventory.price",
           "catalog.inventory.currency",
+          "catalog.inventory.priceSgd",
           "catalog.inventory.availability",
         ])
         .orderBy("catalog.books.title")
@@ -175,14 +194,21 @@ export class BooksService {
       inventory: this.toInventory(
         row.stock === null || row.price === null || row.currency === null || row.availability === null
           ? null
-          : { stock: row.stock, price: row.price, currency: row.currency, availability: row.availability },
+          : {
+              stock: row.stock,
+              price: row.price,
+              currency: row.currency,
+              priceSgd: row.priceSgd,
+              availability: row.availability,
+            },
+        market,
       ),
     }));
 
     return { items, totalItems: Number(countRow.count) };
   }
 
-  async getById(id: string): Promise<Book> {
+  async getById(id: string, market: string | undefined): Promise<Book> {
     const row = await this.db
       .selectFrom("catalog.books")
       .innerJoin("catalog.publishers", "catalog.publishers.id", "catalog.books.publisherId")
@@ -213,6 +239,7 @@ export class BooksService {
         "catalog.inventory.stock",
         "catalog.inventory.price",
         "catalog.inventory.currency",
+        "catalog.inventory.priceSgd",
         "catalog.inventory.availability",
       ])
       .where("catalog.books.id", "=", id)
@@ -257,7 +284,14 @@ export class BooksService {
       inventory: this.toInventory(
         row.stock === null || row.price === null || row.currency === null || row.availability === null
           ? null
-          : { stock: row.stock, price: row.price, currency: row.currency, availability: row.availability },
+          : {
+              stock: row.stock,
+              price: row.price,
+              currency: row.currency,
+              priceSgd: row.priceSgd,
+              availability: row.availability,
+            },
+        market,
       ),
       translatedFromBookId: row.translatedFromBookId,
     };

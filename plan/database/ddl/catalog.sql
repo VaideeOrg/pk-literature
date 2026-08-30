@@ -321,6 +321,8 @@ CREATE TABLE catalog.inventory (
   stock           integer NOT NULL DEFAULT 0,
   price           numeric(10,2) NOT NULL,
   currency        char(3) NOT NULL DEFAULT 'INR',
+  price_sgd       numeric(10,2),        -- puthagakadai.sg storefront override, always SGD;
+                                          -- NULL = not yet priced for SG (shows as unavailable there)
   availability    catalog.inventory_availability NOT NULL DEFAULT 'in_stock',
   last_sync_time  timestamptz,
   updated_by      catalog.inventory_updated_by NOT NULL DEFAULT 'editor',

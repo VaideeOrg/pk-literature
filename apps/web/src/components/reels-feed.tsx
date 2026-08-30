@@ -115,16 +115,22 @@ export function ReelsFeed({ shelves }: { shelves: Shelf[] }) {
   }, [queue.length, exhausted]);
 
   return (
-    <div className="fixed inset-0 z-40 bg-background">
-      <Link
-        href="/"
-        aria-label="Back to home"
-        className="absolute left-4 top-4 z-50 flex h-9 w-9 items-center justify-center rounded-full bg-background/85 text-foreground shadow-md backdrop-blur"
-      >
-        <ArrowLeft className="h-5 w-5" />
-      </Link>
+    // bg-muted is the "letterbox" fill either side of the centered
+    // column at sm: and up - phone-width content stays full-bleed
+    // below that, matching how a real phone has no letterboxing to
+    // show in the first place; the column itself (not this outer div)
+    // is what caps at max-w-sm and gets the border, so the back button
+    // below can anchor to *its* corner, not the full viewport's.
+    <div className="fixed inset-0 z-40 bg-muted">
+      <div className="relative mx-auto h-full w-full overflow-y-auto snap-y snap-mandatory bg-background sm:max-w-sm sm:border-x sm:border-border">
+        <Link
+          href="/"
+          aria-label="Back to home"
+          className="absolute left-4 top-4 z-50 flex h-9 w-9 items-center justify-center rounded-full bg-background/85 text-foreground shadow-md backdrop-blur"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Link>
 
-      <div className="h-full snap-y snap-mandatory overflow-y-auto">
         {queue.map((book, index) => (
           <div
             key={book.id}

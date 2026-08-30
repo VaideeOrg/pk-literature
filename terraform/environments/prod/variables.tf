@@ -9,6 +9,17 @@ variable "domain_name" {
   default     = "pk-literature.example"
 }
 
+# puthagakadai.sg — the Singapore storefront, same backend as
+# var.domain_name (shared VPC/RDS/API Gateway; see Task #5's web-sg.tf
+# for its own frontend hosting). Only referenced to widen
+# api_gateway's CORS allow-list below; the frontend infra that
+# actually serves this domain is added separately.
+variable "domain_name_sg" {
+  description = "Placeholder — set the real puthagakadai.sg domain before first apply."
+  type        = string
+  default     = "sg.pk-literature.example"
+}
+
 variable "create_hosted_zone" {
   type    = bool
   default = true

@@ -10,7 +10,7 @@ azs                = ["ap-southeast-1a", "ap-southeast-1b"]
 
 # puthagakadai.sg — see web-sg.tf. Same backend as domain_name above,
 # its own Route53 zone/ACM certs/frontend hosting only.
-domain_name_sg        = "puthagakadai.sg" 
+domain_name_sg        = "puthagakadai.sg"
 create_hosted_zone_sg = true
 
 # Reusing this account's existing VPC (modules/vpc's create_vpc = false

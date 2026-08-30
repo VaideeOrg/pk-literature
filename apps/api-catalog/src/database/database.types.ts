@@ -185,6 +185,7 @@ export interface InventoryTable {
   stock: number;
   price: string; // numeric(10,2) — Kysely/pg returns numeric as string to avoid float precision loss
   currency: string;
+  priceSgd: string | null; // puthagakadai.sg override, always SGD - see migration 20260101000028
   availability: InventoryAvailability;
   lastSyncTime: Date | null;
   updatedBy: string;

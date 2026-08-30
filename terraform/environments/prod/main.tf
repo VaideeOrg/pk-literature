@@ -203,6 +203,9 @@ module "api_gateway" {
   domain_name              = var.domain_name
   regional_certificate_arn = module.route53_acm.regional_certificate_arn
   hosted_zone_id           = module.route53_acm.zone_id
+  # puthagakadai.sg's frontend calls this same API — see
+  # extra_cors_origins's own comment in the module.
+  extra_cors_origins = [var.domain_name_sg]
 }
 
 module "eventbridge" {

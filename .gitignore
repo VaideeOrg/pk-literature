@@ -33,6 +33,10 @@ build/
 **/dist-lambda.zip
 **/dist-server-lambda.zip
 **/dist-image-lambda.zip
+# puthagakadai.sg's own build — package-opennext.sh's optional suffix
+# argument (terraform-apply.yml calls it as `package-opennext.sh sg`)
+**/dist-server-lambda-sg.zip
+**/dist-image-lambda-sg.zip
 
 # apps/medusa build output (`medusa build`)
 apps/medusa/.medusa/
@@ -41,4 +45,9 @@ apps/medusa/.cache/
 # apps/web build output (`next build` / `open-next build`)
 apps/web/.next/
 apps/web/.open-next/
+# terraform-apply.yml's per-storefront snapshots of .open-next/assets
+# (that path is overwritten in-place by each of the two open-next
+# build runs in the same job) — see that workflow's own comment.
+apps/web/.open-next-assets/
+apps/web/.open-next-sg-assets/
 apps/web/next-env.d.ts

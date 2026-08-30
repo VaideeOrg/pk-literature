@@ -15,17 +15,44 @@ export class CartService {
     return this.buildCart(cartId);
   }
 
-  async upsertItem(anonymousId: string | undefined, bookId: string, quantity: number): Promise<Cart> {
+  // This add-to-cart path reads catalog.inventory directly (own SQL,
+  // not a call to api-catalog's HTTP API) — so unlike GET /books,
+  // getting puthagakadai.sg's SGD pricing here needed its own copy of
+  // api-catalog's toInventory() market branching, not something that
+  // came for free from Task #1's price_sgd column. Same X-Market
+  // header, same "SG" ->  price_sgd/'SGD' convention (migration
+  // 20260101000028), same "NULL price_sgd = unavailable" fallback —
+  // here surfaced as a rejected add-to-cart rather than a null
+  // Inventory, since there's no "add an unavailable book" UI state to
+  // fall through to.
+  async upsertItem(
+    anonymousId: string | undefined,
+    bookId: string,
+    quantity: number,
+    market: string | undefined,
+  ): Promise<Cart> {
     const cartId = await this.getOrCreateCartId(anonymousId);
 
     const book = await this.db
       .selectFrom("catalog.books")
       .innerJoin("catalog.inventory", "catalog.inventory.bookId", "catalog.books.id")
-      .select(["catalog.books.title", "catalog.inventory.price", "catalog.inventory.currency"])
+      .select([
+        "catalog.books.title",
+        "catalog.inventory.price",
+        "catalog.inventory.currency",
+        "catalog.inventory.priceSgd",
+      ])
       .where("catalog.books.id", "=", bookId)
       .where("catalog.books.status", "=", "published")
       .executeTakeFirst();
     if (!book) throw new NotFoundProblem("Book", bookId);
+
+    const isSg = market?.toUpperCase() === "SG";
+    if (isSg && book.priceSgd === null) {
+      throw new ValidationProblem(`"${book.title}" is not available in this market.`);
+    }
+    const unitPrice = isSg ? book.priceSgd! : book.price;
+    const currency = isSg ? "SGD" : book.currency;
 
     await this.db
       .insertInto("commerce.cartItems")
@@ -33,8 +60,8 @@ export class CartService {
         cartId,
         bookId,
         titleSnapshot: book.title,
-        unitPrice: book.price,
-        currency: book.currency,
+        unitPrice,
+        currency,
         quantity,
       })
       .onConflict((oc) =>

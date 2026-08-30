@@ -7,7 +7,7 @@ resource "aws_apigatewayv2_api" "this" {
   protocol_type = "HTTP"
 
   cors_configuration {
-    allow_origins = ["https://${var.domain_name}"]
+    allow_origins = concat(["https://${var.domain_name}"], [for o in var.extra_cors_origins : "https://${o}"])
     allow_methods = ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
     # x-anonymous-id: every anonymous-scoped route since Phase 4
     # (api-feed/api-search/api-commerce) reads this custom header — it

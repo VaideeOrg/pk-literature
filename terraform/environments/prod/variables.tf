@@ -9,6 +9,17 @@ variable "domain_name" {
   default     = "pk-literature.example"
 }
 
+# puthagakadai.sg — the Singapore storefront, same backend as
+# var.domain_name (shared VPC/RDS/API Gateway; see Task #5's web-sg.tf
+# for its own frontend hosting). Only referenced to widen
+# api_gateway's CORS allow-list below; the frontend infra that
+# actually serves this domain is added separately.
+variable "domain_name_sg" {
+  description = "Placeholder — set the real puthagakadai.sg domain before first apply."
+  type        = string
+  default     = "sg.pk-literature.example"
+}
+
 variable "create_hosted_zone" {
   type    = bool
   default = true
@@ -98,6 +109,21 @@ variable "medusa_image_tag" {
 
 variable "coming_soon_mode" {
   description = "Gates every apps/web route behind a static 'opening soon' page (middleware.ts) until real inventory is populated. Defaults on for a fresh launch — flip to false in terraform.tfvars once ready, no apps/web rebuild needed since this is a plain Lambda runtime env var, not a NEXT_PUBLIC_* build-time one."
+  type        = bool
+  default     = true
+}
+
+# --- puthagakadai.sg (web-sg.tf) — same backend as domain_name above,
+# its own frontend hosting only. ---
+
+variable "create_hosted_zone_sg" {
+  description = "true to create a new Route53 hosted zone for domain_name_sg, false to look up an existing one."
+  type        = bool
+  default     = true
+}
+
+variable "coming_soon_mode_sg" {
+  description = "Same purpose as coming_soon_mode, independent toggle since puthagakadai.sg launches on its own timeline."
   type        = bool
   default     = true
 }

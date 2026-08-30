@@ -45,3 +45,13 @@ output "web_distribution_id" {
   description = "apps/web's own CloudFront distribution (separate from module.cloudfront's media/cdn one) — invalidated after the static asset sync."
   value       = module.cloudfront_web.distribution_id
 }
+
+output "web_sg_static_assets_bucket_id" {
+  description = "puthagakadai.sg's own OpenNext static assets bucket — see web_static_assets_bucket_id."
+  value       = module.opennext_sg.static_assets_bucket_id
+}
+
+output "web_sg_distribution_id" {
+  description = "puthagakadai.sg's own CloudFront distribution — see web_distribution_id."
+  value       = module.cloudfront_web_sg.distribution_id
+}

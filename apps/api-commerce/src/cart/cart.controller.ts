@@ -21,8 +21,9 @@ export class CartController {
   async upsertItem(
     @Body() dto: UpsertCartItemDto,
     @Headers("x-anonymous-id") anonymousId?: string,
+    @Headers("x-market") market?: string,
   ): Promise<UpsertCartItemResponse> {
-    return this.cart.upsertItem(anonymousId, dto.bookId, dto.quantity);
+    return this.cart.upsertItem(anonymousId, dto.bookId, dto.quantity, market);
   }
 
   @Delete("items/:id")

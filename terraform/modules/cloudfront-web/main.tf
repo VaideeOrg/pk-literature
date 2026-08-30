@@ -17,14 +17,14 @@ locals {
 }
 
 resource "aws_cloudfront_origin_access_control" "static_assets" {
-  name                              = "pk-literature-${var.environment}-web-static"
+  name                              = "pk-literature-${var.environment}-${var.service_name}-static"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
 }
 
 resource "aws_cloudfront_origin_access_control" "server_lambda" {
-  name                              = "pk-literature-${var.environment}-web-server"
+  name                              = "pk-literature-${var.environment}-${var.service_name}-server"
   origin_access_control_origin_type = "lambda"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
@@ -47,7 +47,7 @@ resource "aws_cloudfront_origin_access_control" "server_lambda" {
 # later, standalone apply once there's no risk of it blocking anything
 # load-bearing in the same run.
 resource "aws_cloudfront_origin_access_control" "image_lambda" {
-  name                              = "pk-literature-${var.environment}-web-image"
+  name                              = "pk-literature-${var.environment}-${var.service_name}-image"
   origin_access_control_origin_type = "lambda"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
@@ -75,7 +75,7 @@ data "aws_cloudfront_origin_request_policy" "all_viewer_except_host" {
 # through this resource instead of that block's own min/default/max_ttl
 # + forwarded_values arguments.
 resource "aws_cloudfront_cache_policy" "image_optimization" {
-  name        = "pk-literature-${var.environment}-web-image"
+  name        = "pk-literature-${var.environment}-${var.service_name}-image"
   min_ttl     = 0
   default_ttl = 3600
   max_ttl     = 86400
@@ -102,7 +102,7 @@ resource "aws_cloudfront_distribution" "this" {
   enabled         = true
   is_ipv6_enabled = true
   aliases         = [var.domain_name]
-  comment         = "pk-literature-${var.environment}-web"
+  comment         = "pk-literature-${var.environment}-${var.service_name}"
 
   origin {
     domain_name              = var.static_assets_bucket_regional_domain_name

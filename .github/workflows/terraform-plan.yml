@@ -144,10 +144,13 @@ jobs:
         run: bash scripts/package-lambda.sh
         working-directory: apps/migration-runner
 
-      # Also caches .open-next/assets (not just the two Lambda zips) —
-      # terraform-apply.yml's later "Sync OpenNext static assets to S3"
-      # step needs that directory too, and it's only ever produced by
-      # this same build.
+      # Also caches a snapshot of .open-next/assets (not just the two
+      # Lambda zips) — terraform-apply.yml's later "Sync OpenNext
+      # static assets to S3" step needs that directory too, and it's
+      # only ever produced by this same build. Snapshotted to its own
+      # .open-next-assets directory rather than caching .open-next/assets
+      # directly — see terraform-apply.yml's matching step for why
+      # (the SG build below overwrites that path in place).
       - name: Cache apps/web OpenNext packages
         id: cache-web
         uses: actions/cache@v4
@@ -155,16 +158,17 @@ jobs:
           path: |
             apps/web/dist-server-lambda.zip
             apps/web/dist-image-lambda.zip
-            apps/web/.open-next/assets
-          # web-opennext-2, matching terraform-apply.yml's own copy of
-          # this key exactly (including the RAZORPAY_KEY_ID_PROD fold-in)
-          # - see that workflow's comment for the full history. Keeping
+            apps/web/.open-next-assets
+          # web-opennext-3, matching terraform-apply.yml's own copy of
+          # this key exactly (including the RAZORPAY_KEY_ID_PROD fold-in
+          # and the -2 -> -3 bump for the .open-next-assets rename) -
+          # see that workflow's comment for the full history. Keeping
           # both keys byte-identical matters: a cache entry created here
           # is exactly the one terraform-apply.yml reuses on the merge
           # commit, so a mismatched key would just force a rebuild there
           # instead of failing loudly - not dangerous, but defeats the
           # point of caching across the two workflows at all.
-          key: web-opennext-2-${{ vars.RAZORPAY_KEY_ID_PROD }}-${{ hashFiles('apps/web/app/**', 'apps/web/src/**', 'apps/web/middleware.ts', 'apps/web/*.config.*', 'apps/web/package.json', 'apps/web/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/ui/src/**', 'packages/ui/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
+          key: web-opennext-3-${{ vars.RAZORPAY_KEY_ID_PROD }}-${{ hashFiles('apps/web/app/**', 'apps/web/src/**', 'apps/web/middleware.ts', 'apps/web/*.config.*', 'apps/web/package.json', 'apps/web/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/ui/src/**', 'packages/ui/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
       # Kept identical to terraform-apply.yml's own copy of this step
       # deliberately - the cache key above is hashFiles()-based (source
       # only, no env vars), so a build cached here without these could
@@ -177,7 +181,36 @@ jobs:
           NEXT_PUBLIC_API_BASE_URL: https://api.puthagakadai.com
           NEXT_PUBLIC_CDN_HOST: cdn.puthagakadai.com
           NEXT_PUBLIC_RAZORPAY_KEY_ID: ${{ vars.RAZORPAY_KEY_ID_PROD }}
-        run: bash scripts/package-opennext.sh
+        run: |
+          bash scripts/package-opennext.sh
+          rm -rf .open-next-assets
+          cp -r .open-next/assets .open-next-assets
+        working-directory: apps/web
+
+      # puthagakadai.sg — terraform plan needs both storefronts' zips to
+      # exist too (web-sg.tf's own filebase64sha256() calls), same
+      # reasoning as terraform-apply.yml's matching step, which this one
+      # is kept identical to.
+      - name: Cache apps/web OpenNext packages (SG)
+        id: cache-web-sg
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/web/dist-server-lambda-sg.zip
+            apps/web/dist-image-lambda-sg.zip
+            apps/web/.open-next-sg-assets
+          key: web-sg-opennext-1-${{ hashFiles('apps/web/app/**', 'apps/web/src/**', 'apps/web/middleware.ts', 'apps/web/*.config.*', 'apps/web/package.json', 'apps/web/tsconfig*.json', 'packages/domain-types/src/**', 'packages/domain-types/package.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/ui/src/**', 'packages/ui/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
+      - name: Build apps/web OpenNext packages (SG)
+        if: steps.cache-web-sg.outputs.cache-hit != 'true'
+        env:
+          NEXT_PUBLIC_API_BASE_URL: https://api.puthagakadai.com
+          NEXT_PUBLIC_CDN_HOST: cdn.puthagakadai.com
+          NEXT_PUBLIC_FEATURE_PAY_LATER: "true"
+          NEXT_PUBLIC_MARKET: SG
+        run: |
+          bash scripts/package-opennext.sh sg
+          rm -rf .open-next-sg-assets
+          cp -r .open-next/assets .open-next-sg-assets
         working-directory: apps/web
 
       - uses: hashicorp/setup-terraform@v3

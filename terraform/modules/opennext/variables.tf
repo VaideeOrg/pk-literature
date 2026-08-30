@@ -2,6 +2,19 @@ variable "environment" {
   type = string
 }
 
+# Defaults to "web" so the existing prod/qa/dev instantiations of this
+# module are byte-identical after this variable was added (same S3
+# bucket name, same two Lambda function names — zero resource
+# replacement). A second storefront sharing this prod environment
+# (puthagakadai.sg) instantiates this module again with
+# service_name = "web-sg" to avoid colliding on the S3 bucket name
+# (globally unique across all of AWS) and the two Lambda function names
+# (unique per account+region, via modules/lambda-service).
+variable "service_name" {
+  type    = string
+  default = "web"
+}
+
 variable "artifact_bucket" {
   description = "S3 bucket forwarded to both lambda-service module calls below — see that module's matching variable and environments/<env>/main.tf's module.lambda_artifacts."
   type        = string

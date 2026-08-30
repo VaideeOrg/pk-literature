@@ -46,6 +46,21 @@ export interface CreatePaymentOrderResponse {
   currency: string;
 }
 
+// POST /payments/pay-later — the zero-gateway alternative to
+// /payments/create-order (puthagakadai.sg: no payment gateway
+// configured at all). No Razorpay round trip and nothing further for
+// the client to do — placing this call is the entire payment step;
+// see apps/api-commerce/src/payments/payments.service.ts's payLater()
+// for what happens server-side. Feature-gated by FEATURE_PAY_LATER,
+// off by default (puthagakadai.com), on by default (puthagakadai.sg).
+export interface PayLaterRequest {
+  orderId: string;
+}
+export interface PayLaterResponse {
+  orderId: string;
+  provider: "pay_later";
+}
+
 // POST /payments/webhook — Razorpay's own payload shape (not ours to
 // define; apps/api-commerce/src/payments/razorpay-webhook.dto.ts
 // types only the fields it actually reads), verified via the

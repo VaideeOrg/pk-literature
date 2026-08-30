@@ -83,6 +83,12 @@ module "lambda_api_commerce" {
     RAZORPAY_KEY_ID_SECRET_ARN         = module.secrets_manager.razorpay_key_id_secret_arn
     RAZORPAY_KEY_SECRET_SECRET_ARN     = module.secrets_manager.razorpay_key_secret_secret_arn
     RAZORPAY_WEBHOOK_SECRET_SECRET_ARN = module.secrets_manager.razorpay_webhook_secret_secret_arn
+
+    # See prod/api-commerce.tf's own comment on why these are single
+    # shared values, not a per-deployment override.
+    PAY_LATER_ENABLED_MARKETS = "SG"
+    SHIPPING_COST             = "50"
+    SHIPPING_COST_SG          = "3"
   }
 
   additional_policy_json = data.aws_iam_policy_document.api_commerce_task.json
@@ -133,6 +139,12 @@ resource "aws_apigatewayv2_route" "api_commerce_post_checkout" {
 resource "aws_apigatewayv2_route" "api_commerce_post_payments_create_order" {
   api_id    = module.api_gateway.api_id
   route_key = "POST /v1/payments/create-order"
+  target    = "integrations/${aws_apigatewayv2_integration.api_commerce.id}"
+}
+
+resource "aws_apigatewayv2_route" "api_commerce_post_payments_pay_later" {
+  api_id    = module.api_gateway.api_id
+  route_key = "POST /v1/payments/pay-later"
   target    = "integrations/${aws_apigatewayv2_integration.api_commerce.id}"
 }
 

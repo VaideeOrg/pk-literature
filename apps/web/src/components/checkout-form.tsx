@@ -5,12 +5,26 @@ import { useRouter } from "next/navigation";
 import type { Order } from "@pk-literature/domain-types";
 import { Button, Input, Label } from "@pk-literature/ui";
 import { clientFetch } from "@/lib/api/client-fetch";
-import { checkout, createPaymentOrder } from "@/lib/api/commerce";
+import { checkout, createPaymentOrder, payLater } from "@/lib/api/commerce";
 import { ApiError } from "@/lib/api/problem-details";
 import { loadRazorpayScript, openRazorpayCheckout } from "@/lib/razorpay";
 import { AddressFormFields, EMPTY_ADDRESS, type AddressFormValue } from "./address-form-fields";
 
 const RAZORPAY_KEY_ID = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ?? "";
+const PAY_LATER_ENABLED = process.env.NEXT_PUBLIC_FEATURE_PAY_LATER === "true";
+
+type PaymentMethod = "razorpay" | "pay_later";
+
+// Whichever methods this deployment actually has available — off by
+// default (puthagakadai.com: Razorpay only), on by default
+// (puthagakadai.sg: no gateway configured at all, so Razorpay simply
+// isn't in this list there). A radio choice only appears below when
+// both are present; either deployment shape reduces to a single
+// implicit method with no UI branch to maintain per-market.
+const AVAILABLE_METHODS: PaymentMethod[] = [
+  ...(RAZORPAY_KEY_ID ? (["razorpay"] as const) : []),
+  ...(PAY_LATER_ENABLED ? (["pay_later"] as const) : []),
+];
 
 export function CheckoutForm() {
   const router = useRouter();
@@ -19,6 +33,7 @@ export function CheckoutForm() {
   const [shipping, setShipping] = useState<AddressFormValue>(EMPTY_ADDRESS);
   const [billingSameAsShipping, setBillingSameAsShipping] = useState(true);
   const [billing, setBilling] = useState<AddressFormValue>(EMPTY_ADDRESS);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(AVAILABLE_METHODS[0] ?? null);
   const [order, setOrder] = useState<Order | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,12 +59,21 @@ export function CheckoutForm() {
   }
 
   async function payForOrder(orderId: string, total: number, currency: string) {
-    if (!RAZORPAY_KEY_ID) {
-      setError(
-        "Payments are not configured in this environment (NEXT_PUBLIC_RAZORPAY_KEY_ID is unset) — order created but cannot be paid for here.",
-      );
+    if (!paymentMethod) {
+      setError("No payment method is configured in this environment — order created but cannot be paid for here.");
       return;
     }
+
+    if (paymentMethod === "pay_later") {
+      try {
+        await payLater(clientFetch, orderId);
+        router.push(`/checkout/confirmation/${orderId}?method=pay_later`);
+      } catch (err) {
+        setError(err instanceof ApiError ? (err.problem.detail ?? err.message) : "Could not place a pay-later order.");
+      }
+      return;
+    }
+
     try {
       const paymentOrder = await createPaymentOrder(clientFetch, orderId);
       await loadRazorpayScript();
@@ -116,10 +140,29 @@ export function CheckoutForm() {
         </div>
       )}
 
+      {AVAILABLE_METHODS.length > 1 && (
+        <div>
+          <h2 className="mb-4 text-lg font-semibold">Payment method</h2>
+          <div className="flex flex-col gap-2 text-sm">
+            {AVAILABLE_METHODS.map((method) => (
+              <label key={method} className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="paymentMethod"
+                  checked={paymentMethod === method}
+                  onChange={() => setPaymentMethod(method)}
+                />
+                {method === "razorpay" ? "Pay online now" : "Pay later (cash on pickup)"}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
       {error && <p className="text-destructive">{error}</p>}
 
       <Button type="submit" size="lg" disabled={pending}>
-        {pending ? "Placing order..." : "Place order and pay"}
+        {pending ? "Placing order..." : paymentMethod === "pay_later" ? "Place order" : "Place order and pay"}
       </Button>
     </form>
   );

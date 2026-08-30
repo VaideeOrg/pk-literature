@@ -305,8 +305,21 @@ resource "aws_lambda_permission" "cloudfront_invoke_server" {
 # the missing-grant 403 (AccessDeniedException, CloudFront's own
 # "Forbidden ... Function URL authorization" error body) this
 # resource fixes.
+#
+# statement_id deliberately ends in "V2": puthagakadai.sg's live
+# incident was unblocked by hand via `aws lambda add-permission` with
+# statement_id AllowCloudFrontServicePrincipalInvokeFunction (no "V2")
+# before this resource existed in code, so reusing that exact id here
+# would make Terraform try to create a statement AWS already has and
+# fail with ResourceConflictException on the next real apply. A second,
+# differently-named statement granting the same effective permission is
+# harmless to have alongside the manual one (multiple resource-policy
+# statements can overlap with no conflict) - no `terraform import`
+# required. The manual statement can be removed later via `aws lambda
+# remove-permission` once this one is confirmed applied; not urgent
+# since it's redundant, not wrong.
 resource "aws_lambda_permission" "cloudfront_invoke_function_server" {
-  statement_id  = "AllowCloudFrontServicePrincipalInvokeFunction"
+  statement_id  = "AllowCloudFrontServicePrincipalInvokeFunctionV2"
   action        = "lambda:InvokeFunction"
   function_name = var.server_function_arn
   principal     = "cloudfront.amazonaws.com"

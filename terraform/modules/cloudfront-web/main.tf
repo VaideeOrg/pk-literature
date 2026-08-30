@@ -287,3 +287,28 @@ resource "aws_lambda_permission" "cloudfront_invoke_server" {
   source_arn             = aws_cloudfront_distribution.this.arn
   function_url_auth_type = "AWS_IAM"
 }
+
+# A second, separate grant alongside the one above - AWS added a hard
+# requirement (~October 2025) that invoking an AWS_IAM Function URL via
+# OAC needs lambda:InvokeFunction on top of lambda:InvokeFunctionUrl,
+# not just the latter alone as originally documented when this module
+# was first written. function_url_auth_type isn't a valid condition for
+# this action (AWS rejects it: "FunctionUrlAuthType is only supported
+# for lambda:InvokeFunctionUrl action") - source_arn alone is what
+# scopes this to CloudFront's signed requests for this one distribution.
+#
+# Confirmed live on puthagakadai.sg's launch: web.tf's original
+# .com server Lambda already carries an equivalent auto-created
+# statement from whenever its Function URL was first provisioned
+# (predating this requirement), which is why that deployment never
+# surfaced this gap - only a genuinely new Function URL (web-sg's) hit
+# the missing-grant 403 (AccessDeniedException, CloudFront's own
+# "Forbidden ... Function URL authorization" error body) this
+# resource fixes.
+resource "aws_lambda_permission" "cloudfront_invoke_function_server" {
+  statement_id  = "AllowCloudFrontServicePrincipalInvokeFunction"
+  action        = "lambda:InvokeFunction"
+  function_name = var.server_function_arn
+  principal     = "cloudfront.amazonaws.com"
+  source_arn    = aws_cloudfront_distribution.this.arn
+}

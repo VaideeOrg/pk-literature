@@ -8,6 +8,11 @@ create_hosted_zone = true
 alarm_email        = "www.vaidee@gmail.com" # REPLACE before first apply
 azs                = ["ap-southeast-1a", "ap-southeast-1b"]
 
+# puthagakadai.sg — see web-sg.tf. Same backend as domain_name above,
+# its own Route53 zone/ACM certs/frontend hosting only.
+domain_name_sg        = "sg.pk-literature.example" # REPLACE with the real puthagakadai.sg domain before first apply
+create_hosted_zone_sg = true
+
 # Reusing this account's existing VPC (modules/vpc's create_vpc = false
 # mode, main.tf) instead of provisioning a new one — see
 # variables.tf's comment for how to pull the real values.

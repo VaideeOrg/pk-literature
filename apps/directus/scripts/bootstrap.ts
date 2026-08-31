@@ -117,13 +117,10 @@ function buildClient() {
 
 type Client = ReturnType<typeof buildClient>;
 
-// plan/contracts/directus/collections.md — top-level collections only.
-// The M:N junction tables (work_authors, book_contributors, work_themes,
-// work_genres, work_literary_movements, book_collections) become usable
-// as M2M alias relationship fields once both sides are tracked and
-// Directus infers the FK-backed relations; wiring the alias fields
-// explicitly is left as a follow-up (see ../README.md) rather than
-// hand-written here untested.
+// plan/contracts/directus/collections.md — both top-level collections
+// and M:N junction tables. Once both sides of a junction are tracked
+// (e.g., works + work_authors), Directus automatically exposes them as
+// M2M alias relationship fields and enforces permissions.
 const CATALOG_COLLECTIONS = [
 	'works',
 	'books',
@@ -135,6 +132,16 @@ const CATALOG_COLLECTIONS = [
 	'collections',
 	'media_assets',
 	'inventory',
+	// M2M junction tables — tracked explicitly so Directus exposes them
+	// as M2M alias relationship fields in the admin UI and honors
+	// permissions on them. Without these, the junction tables remain
+	// invisible in Access Control, and editors can't populate relationships.
+	'work_authors',
+	'work_themes',
+	'book_collections',
+	'book_contributors',
+	'work_genres',
+	'work_literary_movements',
 ];
 
 const STAGING_COLLECTIONS = [

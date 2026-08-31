@@ -239,6 +239,7 @@ async function main() {
 	await ensureReviewFieldOrder(client, 'books', BOOKS_REVIEW_ORDER);
 	await ensurePublishToggleBulkFlows(client);
 	await ensureM2MJunctionFields(client);
+	await ensureFeedShelvesFields(client);
 
 	console.log('Directus bootstrap complete.');
 	// Explicit exit, not a natural fall-through: @directus/sdk's rest()
@@ -1095,6 +1096,45 @@ async function ensureM2MJunctionFields(client: Client) {
 				}),
 			);
 			console.log(`field work_authors.${fieldDef.field}: created`);
+		}
+	}
+}
+
+/**
+ * Ensure feed_shelves collection fields are properly configured.
+ * Editors need these to create and manage editorial shelves on the homepage.
+ */
+async function ensureFeedShelvesFields(client: Client) {
+	const feedShelvesFields = [
+		{ field: 'id', type: 'uuid', meta: { readonly: true } },
+		{ field: 'name', type: 'string', meta: {} },
+		{ field: 'slug', type: 'string', meta: {} },
+		{ field: 'type', type: 'string', meta: { interface: 'select-dropdown', options: { choices: [
+			{ text: 'Editorial', value: 'editorial' },
+			{ text: 'New Arrivals', value: 'new_arrivals' },
+			{ text: 'Trending', value: 'trending' },
+			{ text: 'Personalized Similar', value: 'personalized_similar' },
+			{ text: 'Recently Viewed', value: 'recently_viewed' },
+		]}} },
+		{ field: 'collection_id', type: 'uuid', meta: {} },
+		{ field: 'sort_order', type: 'integer', meta: {} },
+		{ field: 'enabled', type: 'boolean', meta: { interface: 'boolean' } },
+	];
+
+	for (const fieldDef of feedShelvesFields) {
+		try {
+			await client.request(readField('feed_shelves', fieldDef.field));
+			// Field exists, skip
+		} catch {
+			// Field doesn't exist, create it
+			await client.request(
+				createField('feed_shelves', {
+					field: fieldDef.field,
+					type: fieldDef.type,
+					meta: fieldDef.meta,
+				}),
+			);
+			console.log(`field feed_shelves.${fieldDef.field}: created`);
 		}
 	}
 }

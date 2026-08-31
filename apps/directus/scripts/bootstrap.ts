@@ -238,6 +238,7 @@ async function main() {
 	await ensurePublishToggleInterface(client);
 	await ensureReviewFieldOrder(client, 'books', BOOKS_REVIEW_ORDER);
 	await ensurePublishToggleBulkFlows(client);
+	await ensureM2MJunctionFields(client);
 
 	console.log('Directus bootstrap complete.');
 	// Explicit exit, not a natural fall-through: @directus/sdk's rest()
@@ -1039,6 +1040,63 @@ async function ensurePermission(
 		}),
 	);
 	console.log(`permission ${policyId}/${collection}/${action}: created`);
+}
+
+/**
+ * Ensure M2M junction table fields are properly configured in Directus.
+ * For book_collections: book_id, collection_id, sort_order.
+ * For work_authors: work_id, author_id, sort_order, role.
+ * And so on for other M2M tables.
+ */
+async function ensureM2MJunctionFields(client: Client) {
+	// book_collections fields
+	const bookCollectionsFields = [
+		{ field: 'id', type: 'uuid', meta: { readonly: true } },
+		{ field: 'book_id', type: 'uuid', meta: {} },
+		{ field: 'collection_id', type: 'uuid', meta: {} },
+		{ field: 'sort_order', type: 'integer', meta: {} },
+	];
+
+	for (const fieldDef of bookCollectionsFields) {
+		try {
+			await client.request(readField('book_collections', fieldDef.field));
+			// Field exists, skip
+		} catch {
+			// Field doesn't exist, create it
+			await client.request(
+				createField('book_collections', {
+					field: fieldDef.field,
+					type: fieldDef.type,
+					meta: fieldDef.meta,
+				}),
+			);
+			console.log(`field book_collections.${fieldDef.field}: created`);
+		}
+	}
+
+	// work_authors fields
+	const workAuthorsFields = [
+		{ field: 'id', type: 'uuid', meta: { readonly: true } },
+		{ field: 'work_id', type: 'uuid', meta: {} },
+		{ field: 'author_id', type: 'uuid', meta: {} },
+		{ field: 'role', type: 'string', meta: {} },
+		{ field: 'sort_order', type: 'integer', meta: {} },
+	];
+
+	for (const fieldDef of workAuthorsFields) {
+		try {
+			await client.request(readField('work_authors', fieldDef.field));
+		} catch {
+			await client.request(
+				createField('work_authors', {
+					field: fieldDef.field,
+					type: fieldDef.type,
+					meta: fieldDef.meta,
+				}),
+			);
+			console.log(`field work_authors.${fieldDef.field}: created`);
+		}
+	}
 }
 
 main().catch((error) => {

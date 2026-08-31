@@ -146,12 +146,12 @@ const STAGING_COLLECTIONS = [
 	'staging_relationships',
 ];
 
-// discovery.banners only — NOT the rest of api-feed's discovery schema
-// (interest_profiles/interest_events/feed_shelves), which Directus has
-// no grant on and no editorial reason to touch. See
+// discovery.banners and discovery.feed_shelves for editorial shelf management.
+// NOT the rest of api-feed's discovery schema (interest_profiles/interest_events),
+// which Directus has no grant on and no editorial reason to touch. See
 // apps/api-feed/migrations/20260201000006_banners.sql and
 // terraform/environments/prod/directus.tf's DB_SEARCH_PATH comment.
-const DISCOVERY_COLLECTIONS = ['banners'];
+const DISCOVERY_COLLECTIONS = ['banners', 'feed_shelves'];
 
 const ALL_COLLECTIONS = [...CATALOG_COLLECTIONS, ...STAGING_COLLECTIONS, ...DISCOVERY_COLLECTIONS];
 

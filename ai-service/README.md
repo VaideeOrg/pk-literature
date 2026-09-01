@@ -7,7 +7,7 @@ responsibilities between it and this one).
 
 ```
 apps/api-ai-bookseller (Lambda) --private HTTP--> this service (EC2)
-                                                     |- LLM: google/gemma-2b-it (llama.cpp, quantized GGUF)
+                                                     |- LLM: google/gemma-2-2b-it (llama.cpp, quantized GGUF)
                                                      '- ASR: Whisper Tiny
 ```
 
@@ -26,7 +26,7 @@ this MVP given the "low-traffic, experimental feature" framing.
 ai-service/
   api/server.py       Flask app: /chat, /asr, /health, auth-token check
   llm/provider.py      Abstract LLM interface
-  llm/gemma.py          google/gemma-2b-it via llama.cpp
+  llm/gemma.py          google/gemma-2-2b-it via llama.cpp
   asr/provider.py      Abstract ASR interface
   asr/whisper.py        Whisper Tiny
   persona/system_prompt.txt
@@ -43,44 +43,42 @@ never touching `api/server.py`.
 
 ## Model weights
 
-**Gemma checkpoint**: [`google/gemma-2b-it`](https://huggingface.co/google/gemma-2b-it)
-— the official, instruction-tuned base model, not a Tamil-finetuned
-variant. This is the literal reading of spec's "Base Tamil Gemma 2B,
-prompt-only" persona: Tamil fluency and the bookseller character both
-come from `persona/system_prompt.txt` alone, nothing in the weights
-themselves is Tamil-specific. Chosen over a community finetune
-(`abhinand/gemma-2b-tamil` was evaluated first) for a clear, unambiguous
-license and no unverified third-party training data/quality to vet -
-the tradeoff being weaker out-of-the-box Tamil fluency than a good
-finetune might have, worth confirming against the benchmark script's 20
-Tamil prompts once this is running for real.
+**Gemma checkpoint**: [`google/gemma-2-2b-it`](https://huggingface.co/google/gemma-2-2b-it)
+— Gemma **2** generation (not Gemma 1's `gemma-2b-it`), official
+instruction-tuned base model, not a Tamil-finetuned variant. Same
+"prompt-only persona" reasoning as before: Tamil fluency and the
+bookseller character both come from `persona/system_prompt.txt` alone,
+nothing in the weights themselves is Tamil-specific.
 
-**Gated model** — unlike most HF repos, Google requires accepting
-Gemma's license terms on the [model page](https://huggingface.co/google/gemma-2b-it)
-before download access is granted (one-time, per HF account). Downloading
-needs an authenticated HF token after that:
+Pre-quantized GGUF already exists — no manual conversion needed, unlike
+the Gemma 1 path this replaced:
 
 ```bash
-huggingface-cli login  # paste a token from an account with access granted
-huggingface-cli download google/gemma-2b-it --local-dir ./gemma-2b-it
+huggingface-cli download bartowski/gemma-2-2b-it-GGUF \
+  gemma-2-2b-it-Q4_K_M.gguf --local-dir .
+mv gemma-2-2b-it-Q4_K_M.gguf gemma-2b.gguf
 ```
 
-That directory is a standard PyTorch/safetensors checkpoint, **not**
-already GGUF — converting it is a one-time step (llama.cpp's own
-converter, not this repo's code):
+That community repo republishes Google's weights already converted and
+quantized — it doesn't gate the download behind HF's click-through
+license acceptance the way `google/gemma-2-2b-it` itself does, but
+Gemma's usage terms still apply regardless of which repo the bytes came
+from; worth reading them once before relying on this in production.
 
-```bash
-git clone https://github.com/ggerganov/llama.cpp
-cd llama.cpp && pip install -r requirements.txt
-
-python convert_hf_to_gguf.py ./gemma-2b-it \
-  --outfile gemma-2b-it-f16.gguf --outtype f16
-
-# Quantize for CPU inference — Q4_K_M is llama.cpp's own recommended
-# balance of size vs. quality; t3.large's 8GB RAM is shared with
-# Whisper Tiny, so the smaller quantized size matters here.
-./llama-quantize gemma-2b-it-f16.gguf gemma-2b.gguf Q4_K_M
-```
+**Real, unresolved risk worth flagging**: Gemma 2 has a genuinely
+different architecture from Gemma 1 (sliding window attention, logit
+soft-capping) - llama.cpp's support for these landed fast after Gemma
+2's June 2024 release, but early support for a brand-new architecture
+historically had rough edges (soft-capping and sliding-window
+correctness both saw fixes trickle in over the following months). The
+pinned `llama-cpp-python==0.2.90` release window overlaps that same
+period, and nothing here confirms which side of the fixes it landed on.
+A broken implementation of either mechanism tends to show up as
+repetitive or degrading output at longer context, not a clean load
+failure - exactly what the benchmark script's 20 Tamil prompts are for.
+Run it for real before trusting this in production; bump
+`llama-cpp-python` if the output looks wrong rather than assuming the
+model itself is at fault.
 
 Upload the resulting `gemma-2b.gguf` to the models bucket (see Release
 sequence in the top-level PR — the `ai_bookseller_models_bucket`

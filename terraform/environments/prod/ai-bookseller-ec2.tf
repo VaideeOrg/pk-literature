@@ -30,11 +30,11 @@ data "aws_ami" "ubuntu_2204" {
 # files, trivially reproducible) but never on the models bucket (a
 # human-uploaded, non-reproducible-from-this-repo ~6GB artifact).
 resource "aws_s3_bucket" "ai_bookseller_assets" {
-  bucket_prefix = "pk-literature-${var.environment}-ai-bookseller-assets-"
+  bucket_prefix = "pk-literature-prod-ai-bookseller-assets-"
   force_destroy = true
 
   tags = {
-    Environment = var.environment
+    Environment = "prod"
   }
 }
 
@@ -60,13 +60,13 @@ resource "aws_s3_object" "docker_compose_file" {
 # ai_bookseller instance launch:
 #   aws s3 cp gemma-2b.Q4_K_M.gguf s3://<this-bucket>/gemma-2b.gguf
 resource "aws_s3_bucket" "ai_bookseller_models" {
-  bucket_prefix = "pk-literature-${var.environment}-ai-bookseller-models-"
+  bucket_prefix = "pk-literature-prod-ai-bookseller-models-"
   # No force_destroy: unlike the assets bucket above, this is NOT
   # reproducible from this repo alone - an accidental `terraform destroy`
   # shouldn't silently take a multi-GB human-uploaded artifact with it.
 
   tags = {
-    Environment = var.environment
+    Environment = "prod"
   }
 }
 
@@ -83,7 +83,7 @@ data "aws_iam_policy_document" "ai_bookseller_ec2_assume_role" {
 }
 
 resource "aws_iam_role" "ai_bookseller_ec2" {
-  name               = "pk-literature-${var.environment}-ai-bookseller-ec2"
+  name               = "pk-literature-prod-ai-bookseller-ec2"
   assume_role_policy = data.aws_iam_policy_document.ai_bookseller_ec2_assume_role.json
 }
 
@@ -134,7 +134,7 @@ resource "aws_iam_role_policy" "ai_bookseller_ec2_permissions" {
 }
 
 resource "aws_iam_instance_profile" "ai_bookseller_ec2" {
-  name = "pk-literature-${var.environment}-ai-bookseller-ec2"
+  name = "pk-literature-prod-ai-bookseller-ec2"
   role = aws_iam_role.ai_bookseller_ec2.name
 }
 
@@ -192,7 +192,7 @@ resource "aws_instance" "ai_bookseller" {
   EOT
 
   tags = {
-    Name        = "pk-literature-${var.environment}-ai-bookseller"
-    Environment = var.environment
+    Name        = "pk-literature-prod-ai-bookseller"
+    Environment = "prod"
   }
 }

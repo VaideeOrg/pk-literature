@@ -139,8 +139,8 @@ resource "aws_iam_instance_profile" "ai_bookseller_ec2" {
 }
 
 resource "aws_instance" "ai_bookseller" {
-  ami                    = data.aws_ami.ubuntu_2204.id
-  instance_type          = "t3.large"
+  ami           = data.aws_ami.ubuntu_2204.id
+  instance_type = "t3.large"
   # private-nat tier (unlike the Lambda proxying to it) - needs outbound
   # internet via the existing NAT Gateway to reach ECR/S3/Secrets
   # Manager at boot and on every deploy. See

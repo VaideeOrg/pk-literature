@@ -1,0 +1,81 @@
+name: Build AI Service Image
+
+# Builds ai-service/Dockerfile — the LLM+ASR host for the AI Tamil
+# Bookseller feature. Like Medusa, there's no upstream image to layer
+# onto (this compiles our own Python/Flask source, not a third-party
+# base); pushes the result to the shared ECR repo
+# (terraform/bootstrap/ecr.tf's pk-literature/ai-service). The EC2 host
+# (terraform/environments/prod/ai-bookseller-ec2.tf) pulls only from
+# here at boot/update, same "CI runner is the one internet-facing build
+# step" reasoning as build-medusa-image.yml's own header.
+#
+# GATED, MANUAL-TRIGGER ONLY, matching build-directus-image.yml/
+# build-medusa-image.yml's philosophy: nothing pushes a new image on
+# every merge. Run this explicitly, then separately re-run
+# terraform-apply.yml (bumping ai_service_image_tag) to roll it out -
+# and bump the tag for ANY change to ai-service/ source, model version,
+# or persona prompt, not just a dependency bump.
+#
+# ECR repo tags are IMMUTABLE (terraform/bootstrap/ecr.tf) - pushing a
+# tag that already exists fails loudly rather than silently
+# overwriting, so this checks first and skips the push if the tag is
+# already there.
+#
+# NOTE: model weights are NOT baked into this image (see ai-service/
+# README.md and Dockerfile's own comments) - only the ~few-hundred-MB
+# Python/Flask application layer is built and pushed here. The EC2
+# host pulls the Gemma GGUF separately from S3 (a human-uploaded
+# artifact, not something this workflow produces).
+
+on:
+  workflow_dispatch:
+    inputs:
+      ai_service_image_tag:
+        description: "Tag to build and push (must match environments/*/variables.tf's ai_service_image_tag to actually roll out). ECR tags are IMMUTABLE - a code-only change still needs a new tag here, or this workflow silently skips the push (tag already exists) and the old image keeps running."
+        required: true
+        default: "0.1.0"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ECR_REPOSITORY: pk-literature/ai-service
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN_PROD }}
+          aws-region: ap-southeast-1
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr-login
+
+      - name: Skip if tag already exists (immutable repo)
+        id: check
+        run: |
+          if aws ecr describe-images \
+            --repository-name "$ECR_REPOSITORY" \
+            --image-ids imageTag="${{ inputs.ai_service_image_tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        if: steps.check.outputs.exists == 'false'
+        working-directory: ai-service
+        run: |
+          docker build \
+            -t "${{ steps.ecr-login.outputs.registry }}/$ECR_REPOSITORY:${{ inputs.ai_service_image_tag }}" \
+            .
+
+      - name: Push
+        if: steps.check.outputs.exists == 'false'
+        run: docker push "${{ steps.ecr-login.outputs.registry }}/$ECR_REPOSITORY:${{ inputs.ai_service_image_tag }}"

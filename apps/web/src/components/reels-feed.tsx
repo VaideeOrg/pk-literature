@@ -26,6 +26,12 @@ export function ReelsFeed({ shelves }: { shelves: Shelf[] }) {
   const [queue, setQueue] = useState<BookCard[]>(initial.queue);
   const [exhausted, setExhausted] = useState(initial.cursors.every((cursor) => !cursor.hasMore));
   const [loadingMore, setLoadingMore] = useState(false);
+  // AI Tamil Bookseller: "only the mic on the card currently centered
+  // in viewport is interactive" - tracked the same way the existing
+  // lookahead-prefetch observer already tracks a target slide, just
+  // watching every rendered slide instead of one, and keeping whichever
+  // one is most visible rather than triggering a side effect.
+  const [activeIndex, setActiveIndex] = useState(0);
 
   // Mutable bookkeeping that fetchMore() needs to read/write without
   // triggering its own re-renders or going stale inside a closure -
@@ -114,6 +120,27 @@ export function ReelsFeed({ shelves }: { shelves: Shelf[] }) {
     // from this closure, so it's safe to omit without going stale.
   }, [queue.length, exhausted]);
 
+  useEffect(() => {
+    // One observer watching every currently-rendered slide - snap-scroll
+    // means at most two slides are ever simultaneously intersecting
+    // (mid-transition), so "highest ratio wins" reliably picks the one
+    // actually centered rather than the one merely peeking into view.
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const mostVisible = entries.reduce((best, entry) =>
+          entry.intersectionRatio > best.intersectionRatio ? entry : best,
+        );
+        if (mostVisible.isIntersecting) {
+          const index = Number(mostVisible.target.getAttribute("data-slide-index"));
+          if (!Number.isNaN(index)) setActiveIndex(index);
+        }
+      },
+      { threshold: [0, 0.25, 0.5, 0.75, 1] },
+    );
+    slideEls.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [queue.length]);
+
   return (
     // bg-muted is the "letterbox" fill either side of the centered
     // column at sm: and up - phone-width content stays full-bleed
@@ -134,13 +161,14 @@ export function ReelsFeed({ shelves }: { shelves: Shelf[] }) {
         {queue.map((book, index) => (
           <div
             key={book.id}
+            data-slide-index={index}
             ref={(el) => {
               if (el) slideEls.set(index, el);
               else slideEls.delete(index);
             }}
             className="h-dvh snap-start snap-always"
           >
-            <ReelBookSlide book={book} />
+            <ReelBookSlide book={book} isActive={index === activeIndex} />
           </div>
         ))}
 

@@ -1,0 +1,43 @@
+services:
+  ai-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # ECR repo tags are IMMUTABLE (terraform/bootstrap/ecr.tf) - same
+    # convention as medusa_image_tag/directus_image_tag, so this can
+    # never be a mutable "latest". AI_SERVICE_IMAGE is the full
+    # "<ecr-repo-url>:<tag>" reference, written into this host's .env by
+    # scripts/ec2-bootstrap.sh/deploy.sh - both pull that exact tag and
+    # `docker tag` it to this local name before `up -d` reads it here.
+    image: ${AI_SERVICE_IMAGE:-pk-literature-ai-service:local}
+    container_name: pk-literature-ai-service
+    # Spec: "Docker Compose with restart: always; Docker daemon enabled
+    # on boot" — survives both a container crash and a full EC2 reboot
+    # without any custom systemd unit.
+    restart: always
+    ports:
+      # Bound to the host's private IP only in practice — the real
+      # access control is the EC2 instance's own security group
+      # (ingress restricted to the api-ai-bookseller Lambda's SG,
+      # terraform/modules/security-groups), not this port binding.
+      - "5000:5000"
+    environment:
+      GEMMA_MODEL_PATH: /models/gemma-2b.gguf
+      WHISPER_MODEL: ${WHISPER_MODEL:-tiny}
+      LORA_PATH: ${LORA_PATH:-}
+      AI_SERVICE_AUTH_TOKEN: ${AI_SERVICE_AUTH_TOKEN:?AI_SERVICE_AUTH_TOKEN must be set - see README's Secrets Manager fetch step}
+    volumes:
+      - /var/lib/pk-literature-ai/models:/models:ro
+      # Whisper Tiny (~75MB) auto-downloads on first use (whisper.load_model,
+      # asr/whisper.py) - unlike Gemma's GGUF, there's no manual S3 upload
+      # step for it. Without this mount, that download would repeat on
+      # every fresh container (a new image tag recreates the container,
+      # discarding its writable layer) - harmless but wasteful. Read-write,
+      # not :ro like /models above - this directory is what whisper writes
+      # the download INTO, not a pre-populated artifact.
+      - /var/lib/pk-literature-ai/whisper-cache:/root/.cache/whisper
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

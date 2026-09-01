@@ -420,3 +420,33 @@ resource "aws_secretsmanager_secret_version" "identity_jwt_signing_secret" {
   secret_id     = aws_secretsmanager_secret.identity_jwt_signing_secret.id
   secret_string = random_password.identity_jwt_signing_secret.result
 }
+
+# ---------------------------------------------------------------------
+# AI Tamil Bookseller feature — shared secret between the
+# api-ai-bookseller Lambda and the ai-service EC2 host, same pattern as
+# inventory_webhook_secret above (Terraform-generated, read by both
+# sides, injected as a plain env var and compared server-side — chosen
+# for the same reason: this Lambda-to-EC2 call has no other identity
+# system to authenticate against). Fully Terraform-generated (no
+# third-party issuer, unlike Razorpay), so no ignore_changes placeholder
+# dance is needed.
+# ---------------------------------------------------------------------
+
+resource "random_password" "ai_bookseller_internal_token" {
+  length  = 48
+  special = false # plain Bearer-header value — avoid header-escaping surprises
+}
+
+resource "aws_secretsmanager_secret" "ai_bookseller_internal_token" {
+  name        = "/pk-literature/${var.environment}/ai-bookseller/internal-token"
+  description = "Shared secret between api-ai-bookseller (Lambda) and ai-service (EC2) - sent as 'Authorization: Bearer <token>' on every /chat and /asr call, checked server-side by ai-service/api/server.py"
+
+  tags = {
+    Environment = var.environment
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "ai_bookseller_internal_token" {
+  secret_id     = aws_secretsmanager_secret.ai_bookseller_internal_token.id
+  secret_string = random_password.ai_bookseller_internal_token.result
+}

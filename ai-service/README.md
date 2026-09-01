@@ -7,7 +7,7 @@ responsibilities between it and this one).
 
 ```
 apps/api-ai-bookseller (Lambda) --private HTTP--> this service (EC2)
-                                                     |- LLM: Tamil Gemma 2B (llama.cpp, quantized GGUF)
+                                                     |- LLM: abhinand/gemma-2b-tamil (llama.cpp, quantized GGUF)
                                                      '- ASR: Whisper Tiny
 ```
 
@@ -26,7 +26,7 @@ this MVP given the "low-traffic, experimental feature" framing.
 ai-service/
   api/server.py       Flask app: /chat, /asr, /health, auth-token check
   llm/provider.py      Abstract LLM interface
-  llm/gemma.py          Gemma 2B via llama.cpp
+  llm/gemma.py          abhinand/gemma-2b-tamil via llama.cpp
   asr/provider.py      Abstract ASR interface
   asr/whisper.py        Whisper Tiny
   persona/system_prompt.txt
@@ -40,6 +40,53 @@ Both provider interfaces are deliberately thin — swapping the LLM
 runtime, adding a LoRA persona adapter, or moving ASR to a different
 model only ever means a new class against `LLMProvider`/`ASRProvider`,
 never touching `api/server.py`.
+
+## Model weights
+
+**Gemma checkpoint**: [`abhinand/gemma-2b-tamil`](https://huggingface.co/abhinand/gemma-2b-tamil)
+— a Tamil-finetuned Gemma 2B, not plain `google/gemma-2b`. This is a
+deliberate choice over the base model: spec's "Base Tamil Gemma 2B,
+prompt-only" persona relies on `persona/system_prompt.txt` for the
+bookseller character, but the underlying Tamil fluency itself comes
+from this checkpoint's own finetuning, not from prompting alone.
+
+That HF repo is a standard PyTorch/safetensors checkpoint, **not**
+already GGUF — converting it is a one-time step (llama.cpp's own
+converter, not this repo's code):
+
+```bash
+git clone https://github.com/ggerganov/llama.cpp
+cd llama.cpp && pip install -r requirements.txt
+
+python convert_hf_to_gguf.py /path/to/abhinand-gemma-2b-tamil \
+  --outfile gemma-2b-tamil-f16.gguf --outtype f16
+
+# Quantize for CPU inference — Q4_K_M is llama.cpp's own recommended
+# balance of size vs. quality; t3.large's 8GB RAM is shared with
+# Whisper Tiny, so the smaller quantized size matters here.
+./llama-quantize gemma-2b-tamil-f16.gguf gemma-2b.gguf Q4_K_M
+```
+
+Upload the resulting `gemma-2b.gguf` to the models bucket (see Release
+sequence in the top-level PR — the `ai_bookseller_models_bucket`
+Terraform output names the exact bucket):
+
+```bash
+aws s3 cp gemma-2b.gguf s3://<ai_bookseller_models_bucket output>/gemma-2b.gguf
+```
+
+`GEMMA_MODEL_PATH` (env var, `llm/gemma.py`) just points at wherever
+this file ends up — `/models/gemma-2b.gguf` in the container, bind-mounted
+from `/var/lib/pk-literature-ai/models` on the EC2 host
+(`scripts/ec2-bootstrap.sh` pulls it from S3 to that path). The filename
+itself carries no meaning to the code; it's a fixed convention, not a
+lookup key — swapping in a different finetune or a LoRA adapter later
+never means touching `gemma.py`, just re-uploading to the same S3 key.
+
+**Whisper checkpoint**: OpenAI's official `tiny` multilingual Whisper
+(`WHISPER_MODEL` env var) — auto-downloaded by `openai-whisper` on first
+use, no manual conversion or upload needed (see `asr/whisper.py` and the
+docker-compose.yml comment on the whisper-cache mount).
 
 ## EC2 setup
 

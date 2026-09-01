@@ -35,18 +35,28 @@ curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/aw
 unzip -q /tmp/awscliv2.zip -d /tmp
 /tmp/aws/install
 
-echo "==> Creating model + log directories"
+echo "==> Creating model + cache + log directories"
 mkdir -p /var/lib/pk-literature-ai/models
+# Bind-mounted into the container at /root/.cache/whisper
+# (docker-compose.yml) - not pre-populated here, whisper.load_model
+# writes into it on first use. Persisting it across container
+# recreations (a new image tag) avoids re-downloading Whisper Tiny
+# (~75MB) from OpenAI's CDN on every deploy - harmless either way, but
+# free to avoid once the directory exists.
+mkdir -p /var/lib/pk-literature-ai/whisper-cache
 mkdir -p /opt/pk-literature-ai
 
-echo "==> Downloading model weights from S3 (skipped if already present)"
+echo "==> Downloading Gemma model weights from S3 (skipped if already present)"
 if [ ! -f /var/lib/pk-literature-ai/models/gemma-2b.gguf ]; then
   aws s3 cp "s3://${MODELS_BUCKET}/gemma-2b.gguf" /var/lib/pk-literature-ai/models/gemma-2b.gguf --region "$AWS_REGION"
 fi
-# Whisper Tiny (~75MB) is left to openai-whisper's own first-run
-# download-and-cache behavior inside the container rather than
-# pre-staged here — small enough that re-fetching it on a rare cold
-# container start isn't worth a second S3 round trip to manage.
+# Whisper Tiny itself is NOT downloaded here, unlike Gemma above -
+# llama-cpp-python has no auto-fetch mechanism at all (Llama() requires
+# an existing local file path), but openai-whisper's load_model() does
+# fetch-and-cache automatically on first use. The whisper-cache mount
+# created above just makes sure that first download, whenever it
+# happens, persists on the host instead of the container's throwaway
+# writable layer.
 
 echo "==> Fetching the internal auth token from Secrets Manager"
 AUTH_TOKEN=$(aws secretsmanager get-secret-value \

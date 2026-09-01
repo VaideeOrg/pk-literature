@@ -28,6 +28,14 @@ services:
       AI_SERVICE_AUTH_TOKEN: ${AI_SERVICE_AUTH_TOKEN:?AI_SERVICE_AUTH_TOKEN must be set - see README's Secrets Manager fetch step}
     volumes:
       - /var/lib/pk-literature-ai/models:/models:ro
+      # Whisper Tiny (~75MB) auto-downloads on first use (whisper.load_model,
+      # asr/whisper.py) - unlike Gemma's GGUF, there's no manual S3 upload
+      # step for it. Without this mount, that download would repeat on
+      # every fresh container (a new image tag recreates the container,
+      # discarding its writable layer) - harmless but wasteful. Read-write,
+      # not :ro like /models above - this directory is what whisper writes
+      # the download INTO, not a pre-populated artifact.
+      - /var/lib/pk-literature-ai/whisper-cache:/root/.cache/whisper
     logging:
       driver: json-file
       options:

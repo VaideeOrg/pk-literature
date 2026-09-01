@@ -579,3 +579,95 @@ resource "aws_vpc_security_group_ingress_rule" "vpc_endpoints_from_ecs_medusa" {
   ip_protocol                  = "tcp"
   description                  = "HTTPS from Medusa ECS task (ECR image pull/registry auth, its own PutEvents calls)"
 }
+
+# ---------------------------------------------------------------------
+# AI Tamil Bookseller feature. Two new tiers, split the same way as the
+# rest of this file:
+#   - lambda_ai_bookseller: the api-ai-bookseller Lambda
+#     (terraform/environments/prod/api-ai-bookseller.tf) - sits in the
+#     private-isolated tier like every other simple Lambda here (it
+#     never needs the internet itself: book context is passed through
+#     from the frontend, no Directus/catalog re-fetch, no RDS at all -
+#     first Lambda in this repo with zero DB access). Only needs to (a)
+#     reach the EC2 host privately within the VPC and (b) read the
+#     internal auth token from Secrets Manager.
+#   - ec2_ai_bookseller: the EC2 host itself
+#     (terraform/environments/prod/ai-bookseller-ec2.tf) - sits in the
+#     private-nat tier, unlike everything else in this SG file, which is
+#     either private-isolated or (ecs_medusa/lambda_egress) private-nat
+#     for a *different* reason (Razorpay). This one needs NAT egress to
+#     pull its Docker image from ECR and model weights from S3/Secrets
+#     Manager at boot and on every deploy - there is no VPC-endpoint
+#     bootstrap path set up for it the way ecs_directus has, so plain
+#     internet egress via the existing NAT Gateway is the simpler of the
+#     two options this repo's own EC2-networking decision considered.
+# ---------------------------------------------------------------------
+
+resource "aws_security_group" "lambda_ai_bookseller" {
+  name_prefix = "pk-literature-${var.environment}-lambda-ai-bookseller-"
+  vpc_id      = var.vpc_id
+  description = "api-ai-bookseller Lambda - private-isolated tier, no RDS access, talks only to the AI Bookseller EC2 host"
+
+  tags = {
+    Name        = "pk-literature-${var.environment}-lambda-ai-bookseller"
+    Environment = var.environment
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_security_group" "ec2_ai_bookseller" {
+  name_prefix = "pk-literature-${var.environment}-ec2-ai-bookseller-"
+  vpc_id      = var.vpc_id
+  description = "AI Bookseller EC2 host (Gemma 2B + Whisper Tiny) - inbound only from the api-ai-bookseller Lambda, outbound internet egress for ECR/S3/Secrets Manager"
+
+  tags = {
+    Name        = "pk-literature-${var.environment}-ec2-ai-bookseller"
+    Environment = var.environment
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_vpc_security_group_egress_rule" "lambda_ai_bookseller_to_ec2" {
+  security_group_id            = aws_security_group.lambda_ai_bookseller.id
+  referenced_security_group_id = aws_security_group.ec2_ai_bookseller.id
+  from_port                    = 5000
+  to_port                      = 5000
+  ip_protocol                  = "tcp"
+  description                  = "AI service HTTP port"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "ec2_ai_bookseller_from_lambda" {
+  security_group_id            = aws_security_group.ec2_ai_bookseller.id
+  referenced_security_group_id = aws_security_group.lambda_ai_bookseller.id
+  from_port                    = 5000
+  to_port                      = 5000
+  ip_protocol                  = "tcp"
+  description                  = "AI service HTTP port from api-ai-bookseller Lambda only - not publicly reachable"
+}
+
+resource "aws_vpc_security_group_egress_rule" "lambda_ai_bookseller_to_vpc_endpoints" {
+  security_group_id = aws_security_group.lambda_ai_bookseller.id
+  # CIDR, not an SG reference - same reasoning as lambda_db_to_vpc_endpoints:
+  # the Secrets Manager endpoint it reads the internal auth token from is
+  # a reused one this config doesn't own.
+  cidr_ipv4   = var.vpc_cidr
+  from_port   = 443
+  to_port     = 443
+  ip_protocol = "tcp"
+  description = "HTTPS to Secrets Manager (internal AI-service auth token)"
+}
+
+resource "aws_vpc_security_group_egress_rule" "ec2_ai_bookseller_to_internet" {
+  security_group_id = aws_security_group.ec2_ai_bookseller.id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
+  description       = "HTTPS egress (ECR image pull, S3 model download, Secrets Manager, SSM Session Manager) via NAT Gateway"
+}

@@ -79,6 +79,10 @@ output "identity_jwt_signing_secret_arn" {
   value = aws_secretsmanager_secret.identity_jwt_signing_secret.arn
 }
 
+output "ai_bookseller_internal_token_secret_arn" {
+  value = aws_secretsmanager_secret.ai_bookseller_internal_token.arn
+}
+
 # role name -> its RDS Proxy auth-registration secret ARN — feeds
 # straight into rds-proxy's iam_auth_secret_arns (values(...)).
 output "iam_auth_role_secret_arns" {

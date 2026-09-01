@@ -38,3 +38,11 @@ output "cloudshell_db_access_sg_id" {
   description = "Select this as the security group when creating an AWS CloudShell VPC environment for ad-hoc DB access — it's pre-wired with egress to RDS Proxy on 5432."
   value       = aws_security_group.cloudshell_db_access.id
 }
+
+output "lambda_ai_bookseller_sg_id" {
+  value = aws_security_group.lambda_ai_bookseller.id
+}
+
+output "ec2_ai_bookseller_sg_id" {
+  value = aws_security_group.ec2_ai_bookseller.id
+}

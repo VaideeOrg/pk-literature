@@ -127,3 +127,17 @@ variable "coming_soon_mode_sg" {
   type        = bool
   default     = true
 }
+
+# --- AI Tamil Bookseller feature (api-ai-bookseller.tf, ai-bookseller-ec2.tf) ---
+
+variable "feature_ai_bookseller" {
+  description = "Gates the AI Tamil Bookseller feature (api-ai-bookseller Lambda short-circuits to a fallback response when false). Plain Lambda runtime env var, same COMING_SOON_MODE-style toggle - flip via terraform apply once the EC2 host (ai-service) is confirmed healthy, no Lambda redeploy needed. Defaults off: the EC2 host and its ~6GB model weights must be manually provisioned/uploaded once (see ai-bookseller-ec2.tf's aws_s3_bucket.ai_bookseller_models comment) before this can safely go true."
+  type        = bool
+  default     = false
+}
+
+variable "ai_service_image_tag" {
+  description = "Tag pushed by .github/workflows/build-ai-service-image.yml to the pk-literature/ai-service ECR repo (terraform/bootstrap/ecr.tf). ECR tags are IMMUTABLE, same convention as directus_image_tag/medusa_image_tag - a change to ai-service/ source needs a new tag here to actually roll out (ai-bookseller-ec2.tf's ec2-bootstrap.sh/deploy.sh pull this exact tag, never \"latest\")."
+  type        = string
+  default     = "0.1.0"
+}

@@ -1,0 +1,29 @@
+services:
+  ai-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pk-literature-ai-service:latest
+    container_name: pk-literature-ai-service
+    # Spec: "Docker Compose with restart: always; Docker daemon enabled
+    # on boot" — survives both a container crash and a full EC2 reboot
+    # without any custom systemd unit.
+    restart: always
+    ports:
+      # Bound to the host's private IP only in practice — the real
+      # access control is the EC2 instance's own security group
+      # (ingress restricted to the api-ai-bookseller Lambda's SG,
+      # terraform/modules/security-groups), not this port binding.
+      - "5000:5000"
+    environment:
+      GEMMA_MODEL_PATH: /models/gemma-2b.gguf
+      WHISPER_MODEL: ${WHISPER_MODEL:-tiny}
+      LORA_PATH: ${LORA_PATH:-}
+      AI_SERVICE_AUTH_TOKEN: ${AI_SERVICE_AUTH_TOKEN:?AI_SERVICE_AUTH_TOKEN must be set - see README's Secrets Manager fetch step}
+    volumes:
+      - /var/lib/pk-literature-ai/models:/models:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

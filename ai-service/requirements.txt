@@ -1,0 +1,9 @@
+flask==3.0.3
+gunicorn==22.0.0
+python-dotenv==1.0.1
+numpy==1.26.4
+soundfile==0.12.1
+librosa==0.10.2
+openai-whisper==20231117
+llama-cpp-python==0.2.90
+pytest==8.2.2

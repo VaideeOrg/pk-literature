@@ -7,7 +7,7 @@ responsibilities between it and this one).
 
 ```
 apps/api-ai-bookseller (Lambda) --private HTTP--> this service (EC2)
-                                                     |- LLM: abhinand/gemma-2b-tamil (llama.cpp, quantized GGUF)
+                                                     |- LLM: google/gemma-2b-it (llama.cpp, quantized GGUF)
                                                      '- ASR: Whisper Tiny
 ```
 
@@ -26,7 +26,7 @@ this MVP given the "low-traffic, experimental feature" framing.
 ai-service/
   api/server.py       Flask app: /chat, /asr, /health, auth-token check
   llm/provider.py      Abstract LLM interface
-  llm/gemma.py          abhinand/gemma-2b-tamil via llama.cpp
+  llm/gemma.py          google/gemma-2b-it via llama.cpp
   asr/provider.py      Abstract ASR interface
   asr/whisper.py        Whisper Tiny
   persona/system_prompt.txt
@@ -43,14 +43,29 @@ never touching `api/server.py`.
 
 ## Model weights
 
-**Gemma checkpoint**: [`abhinand/gemma-2b-tamil`](https://huggingface.co/abhinand/gemma-2b-tamil)
-— a Tamil-finetuned Gemma 2B, not plain `google/gemma-2b`. This is a
-deliberate choice over the base model: spec's "Base Tamil Gemma 2B,
-prompt-only" persona relies on `persona/system_prompt.txt` for the
-bookseller character, but the underlying Tamil fluency itself comes
-from this checkpoint's own finetuning, not from prompting alone.
+**Gemma checkpoint**: [`google/gemma-2b-it`](https://huggingface.co/google/gemma-2b-it)
+— the official, instruction-tuned base model, not a Tamil-finetuned
+variant. This is the literal reading of spec's "Base Tamil Gemma 2B,
+prompt-only" persona: Tamil fluency and the bookseller character both
+come from `persona/system_prompt.txt` alone, nothing in the weights
+themselves is Tamil-specific. Chosen over a community finetune
+(`abhinand/gemma-2b-tamil` was evaluated first) for a clear, unambiguous
+license and no unverified third-party training data/quality to vet -
+the tradeoff being weaker out-of-the-box Tamil fluency than a good
+finetune might have, worth confirming against the benchmark script's 20
+Tamil prompts once this is running for real.
 
-That HF repo is a standard PyTorch/safetensors checkpoint, **not**
+**Gated model** — unlike most HF repos, Google requires accepting
+Gemma's license terms on the [model page](https://huggingface.co/google/gemma-2b-it)
+before download access is granted (one-time, per HF account). Downloading
+needs an authenticated HF token after that:
+
+```bash
+huggingface-cli login  # paste a token from an account with access granted
+huggingface-cli download google/gemma-2b-it --local-dir ./gemma-2b-it
+```
+
+That directory is a standard PyTorch/safetensors checkpoint, **not**
 already GGUF — converting it is a one-time step (llama.cpp's own
 converter, not this repo's code):
 
@@ -58,13 +73,13 @@ converter, not this repo's code):
 git clone https://github.com/ggerganov/llama.cpp
 cd llama.cpp && pip install -r requirements.txt
 
-python convert_hf_to_gguf.py /path/to/abhinand-gemma-2b-tamil \
-  --outfile gemma-2b-tamil-f16.gguf --outtype f16
+python convert_hf_to_gguf.py ./gemma-2b-it \
+  --outfile gemma-2b-it-f16.gguf --outtype f16
 
 # Quantize for CPU inference — Q4_K_M is llama.cpp's own recommended
 # balance of size vs. quality; t3.large's 8GB RAM is shared with
 # Whisper Tiny, so the smaller quantized size matters here.
-./llama-quantize gemma-2b-tamil-f16.gguf gemma-2b.gguf Q4_K_M
+./llama-quantize gemma-2b-it-f16.gguf gemma-2b.gguf Q4_K_M
 ```
 
 Upload the resulting `gemma-2b.gguf` to the models bucket (see Release

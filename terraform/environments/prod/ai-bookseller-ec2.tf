@@ -30,7 +30,11 @@ data "aws_ami" "ubuntu_2204" {
 # files, trivially reproducible) but never on the models bucket (a
 # human-uploaded, non-reproducible-from-this-repo ~6GB artifact).
 resource "aws_s3_bucket" "ai_bookseller_assets" {
-  bucket_prefix = "pk-literature-prod-ai-bookseller-assets-"
+  # Fixed name, not bucket_prefix - matches every other bucket in this
+  # repo (modules/s3, modules/opennext), and bucket_prefix has its own
+  # 37-char cap (room reserved for Terraform's random suffix) that a
+  # name this long blows past anyway.
+  bucket        = "pk-literature-prod-ai-bookseller-assets"
   force_destroy = true
 
   tags = {
@@ -60,7 +64,8 @@ resource "aws_s3_object" "docker_compose_file" {
 # ai_bookseller instance launch:
 #   aws s3 cp gemma-2b.Q4_K_M.gguf s3://<this-bucket>/gemma-2b.gguf
 resource "aws_s3_bucket" "ai_bookseller_models" {
-  bucket_prefix = "pk-literature-prod-ai-bookseller-models-"
+  # Fixed name, not bucket_prefix - same reasoning as the assets bucket above.
+  bucket = "pk-literature-prod-ai-bookseller-models"
   # No force_destroy: unlike the assets bucket above, this is NOT
   # reproducible from this repo alone - an accidental `terraform destroy`
   # shouldn't silently take a multi-GB human-uploaded artifact with it.

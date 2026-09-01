@@ -8,7 +8,6 @@ async function bootstrap(): Promise<void> {
   const app = await createApp();
   const port = process.env.PORT ?? 3006;
   await app.listen(port);
-  // eslint-disable-next-line no-console
   console.log(`api-ai-bookseller listening on :${port}`);
 }
 

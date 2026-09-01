@@ -9,6 +9,7 @@ import type { BookCard } from "@pk-literature/domain-types";
 import { clientFetch } from "@/lib/api/client-fetch";
 import { postLike } from "@/lib/api/feed";
 import { upsertCartItem } from "@/lib/api/commerce";
+import { VoiceControl } from "./voice-control";
 
 // One full-viewport slide of /feed's reels-style vertical feed — an
 // image zone (book.cover, full-bleed) plus a white "sheet" for
@@ -21,7 +22,7 @@ import { upsertCartItem } from "@/lib/api/commerce";
 // horizontal shelf's own BookCard doesn't have one either, per
 // SPEC-05's comparison) - this treats it as a shortcut to the existing
 // book detail page rather than inventing a new modal nobody asked for.
-export function ReelBookSlide({ book }: { book: BookCard }) {
+export function ReelBookSlide({ book, isActive }: { book: BookCard; isActive: boolean }) {
   const router = useRouter();
   const [liked, setLiked] = useState(false);
   const [likePending, setLikePending] = useState(false);
@@ -77,6 +78,18 @@ export function ReelBookSlide({ book }: { book: BookCard }) {
         )}
 
         <div className="absolute bottom-4 right-3 flex flex-col items-center gap-3.5">
+          {/* AI Tamil Bookseller — press-and-hold mic. isActive gates on
+              this slide being the one centered in the viewport
+              (ReelsFeed's own IntersectionObserver); VoiceControl itself
+              renders nothing at all when isActive is false, per spec's
+              "fully hidden (not dimmed)" rule for every other slide's mic.
+              Book context is exactly what's already rendered on this
+              card - no extra fetch - so `description` is genuinely null
+              here (BookCard/SPEC-05 carries no description field at all). */}
+          <VoiceControl
+            book={{ id: book.id, title: book.title, author: book.authorName, description: null }}
+            isActive={isActive}
+          />
           <button
             type="button"
             onClick={toggleLike}

@@ -139,6 +139,17 @@ jobs:
         run: bash scripts/package-lambda.sh
         working-directory: apps/api-identity
 
+      - name: Cache api-ai-bookseller Lambda package
+        id: cache-api-ai-bookseller
+        uses: actions/cache@v4
+        with:
+          path: apps/api-ai-bookseller/dist-lambda.zip
+          key: api-ai-bookseller-lambda-${{ hashFiles('apps/api-ai-bookseller/src/**', 'apps/api-ai-bookseller/package.json', 'apps/api-ai-bookseller/tsconfig*.json', 'packages/contracts/src/**', 'packages/contracts/package.json', 'packages/tsconfig/**', 'pnpm-lock.yaml') }}
+      - name: Build api-ai-bookseller Lambda package
+        if: steps.cache-api-ai-bookseller.outputs.cache-hit != 'true'
+        run: bash scripts/package-lambda.sh
+        working-directory: apps/api-ai-bookseller
+
       # See terraform-plan.yml's matching comment on the RDS-CA-bundle
       # staleness tradeoff a cache-hit accepts here.
       - name: Cache migration-runner Lambda package

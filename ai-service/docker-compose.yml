@@ -3,7 +3,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: pk-literature-ai-service:latest
+    # ECR repo tags are IMMUTABLE (terraform/bootstrap/ecr.tf) - same
+    # convention as medusa_image_tag/directus_image_tag, so this can
+    # never be a mutable "latest". AI_SERVICE_IMAGE is the full
+    # "<ecr-repo-url>:<tag>" reference, written into this host's .env by
+    # scripts/ec2-bootstrap.sh/deploy.sh - both pull that exact tag and
+    # `docker tag` it to this local name before `up -d` reads it here.
+    image: ${AI_SERVICE_IMAGE:-pk-literature-ai-service:local}
     container_name: pk-literature-ai-service
     # Spec: "Docker Compose with restart: always; Docker daemon enabled
     # on boot" — survives both a container crash and a full EC2 reboot

@@ -12,6 +12,10 @@ set -euo pipefail
 AWS_REGION="${AWS_REGION:-ap-southeast-1}"
 MODELS_BUCKET="${MODELS_BUCKET:?Set MODELS_BUCKET (injected by Terraform templatefile())}"
 ECR_REPO_URL="${ECR_REPO_URL:?Set ECR_REPO_URL (injected by Terraform templatefile())}"
+# ECR tags are IMMUTABLE (terraform/bootstrap/ecr.tf) - same
+# never-"latest" convention as medusa_image_tag/directus_image_tag.
+# Injected by Terraform from var.ai_service_image_tag.
+IMAGE_TAG="${IMAGE_TAG:?Set IMAGE_TAG (injected by Terraform templatefile() from var.ai_service_image_tag)}"
 AUTH_TOKEN_SECRET_ARN="${AUTH_TOKEN_SECRET_ARN:?Set AUTH_TOKEN_SECRET_ARN (injected by Terraform templatefile())}"
 
 echo "==> Installing Docker + Compose plugin"
@@ -56,14 +60,14 @@ aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS 
 echo "==> Writing .env for docker-compose"
 cat > /opt/pk-literature-ai/.env <<EOF
 AI_SERVICE_AUTH_TOKEN=${AUTH_TOKEN}
+AI_SERVICE_IMAGE=${ECR_REPO_URL}:${IMAGE_TAG}
 WHISPER_MODEL=tiny
 LORA_PATH=
 EOF
 chmod 600 /opt/pk-literature-ai/.env
 
-echo "==> Pulling image and starting the service"
-docker pull "${ECR_REPO_URL}:latest"
-docker tag "${ECR_REPO_URL}:latest" pk-literature-ai-service:latest
+echo "==> Pulling image ${ECR_REPO_URL}:${IMAGE_TAG}"
+docker pull "${ECR_REPO_URL}:${IMAGE_TAG}"
 
 # docker-compose.yml + the repo checkout aren't present on a fresh
 # instance by user_data alone — copied in by the same Terraform
